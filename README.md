@@ -119,7 +119,7 @@ Think of it as **Cursor/Roo Code, but for Unreal Engine** — with deep engine i
 1. **Clone the repository** into your project's `Plugins` folder:
    ```bash
    cd YourProject/Plugins
-   git clone https://github.com/YourUsername/Autonomix.git
+   git clone https://github.com/PRQELT/Autonomix.git
    ```
 
 2. **Regenerate project files** (right-click `.uproject` → Generate Visual Studio project files)
