@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "widget_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_widget_blueprint",
+      "description": "Create a new UMG Widget Blueprint asset (WBP_) with an optional root widget class.\n\nWidget Blueprints have TWO systems (analogous to Blueprint actors):\n  1. Widget Tree: Visual hierarchy of UWidget objects (CanvasPanel, TextBlock, Button, etc.)\n     — managed via add_widget and set_widget_property\n  2. Widget Blueprint Graph: Standard K2 Blueprint logic (OnClicked bindings, variable set/get)\n     — populated via inject_blueprint_nodes_t3d with asset_path pointing to the WBP\n\nNaming convention: WBP_ prefix (e.g. WBP_HealthBar, WBP_MainMenu, WBP_Settings)\n\nWorkflow:\n1. create_widget_blueprint — create the asset\n2. add_widget — build the widget hierarchy\n3. set_widget_property — set text, colors, visibility\n4. compile_widget_blueprint — verify no errors\n5. inject_blueprint_nodes_t3d — wire click/hover events in the graph",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the Widget Blueprint, e.g. /Game/UI/WBP_MainMenu"
+          },
+          "root_widget_class": {
+            "type": "string",
+            "description": "Class for the root container widget. Default: CanvasPanel. Options: CanvasPanel, VerticalBox, HorizontalBox, SizeBox, Overlay, GridPanel, ScrollBox. Use CanvasPanel for freely positioned UI; VerticalBox/HorizontalBox for auto-layout."
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "add_widget",
+      "description": "Add a UMG widget to the widget tree of an existing Widget Blueprint.\n\nThe parent_widget MUST be a panel widget (a container that accepts children):\n  Panel widgets: CanvasPanel, VerticalBox, HorizontalBox, GridPanel, ScrollBox, Overlay, WidgetSwitcher, SizeBox\n  Leaf widgets (cannot be parents): TextBlock, Button (well, Button contains one child slot), Image, ProgressBar, Slider, CheckBox, EditableTextBox\n\nCall get_widget_tree FIRST to see current widget names and which are panels.\n\nLeaf widget classes:\n  TextBlock — display text\n  Image — display a texture/material\n  Button — clickable; contains one child slot\n  ProgressBar — fill-based value display\n  Slider — draggable numeric value\n  CheckBox — boolean toggle\n  EditableTextBox — user text input\n  RichTextBlock — styled text with markup\n\nPanel widget classes:\n  CanvasPanel — absolute positioning with anchors\n  VerticalBox — vertical auto-stack\n  HorizontalBox — horizontal auto-stack\n  GridPanel — grid layout\n  ScrollBox — scrollable container\n  Overlay — z-stacked layers\n  WidgetSwitcher — tab-style visibility switcher\n  SizeBox — enforces min/max size on child",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to modify"
+          },
+          "widget_class": {
+            "type": "string",
+            "description": "Widget class to add. Leaf: TextBlock, Image, Button, ProgressBar, Slider, CheckBox, EditableTextBox. Panel: CanvasPanel, VerticalBox, HorizontalBox, ScrollBox, GridPanel, Overlay, WidgetSwitcher, SizeBox."
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Unique name for the widget in the tree, e.g. TitleText, HealthBar, SubmitButton. Used to reference this widget in set_widget_property."
+          },
+          "parent_widget": {
+            "type": "string",
+            "description": "Name of the parent panel widget to add this widget to. Must be a panel widget (CanvasPanel, VerticalBox, etc.). Use get_widget_tree to find panel widget names. If omitted, attaches to root panel."
+          }
+        },
+        "required": ["asset_path", "widget_class", "widget_name"]
+      }
+    },
+
+    {
+      "name": "set_widget_property",
+      "description": "Set a property on a named widget inside a Widget Blueprint.\n\nProperty names are exact C++ property names (case-sensitive). Common properties by widget type:\n\nTextBlock:\n  Text — the displayed string (FText format: use NSLOCTEXT or plain string)\n  ColorAndOpacity — text color (FLinearColor: \"(R=1.0,G=0.0,B=0.0,A=1.0)\" for red)\n  Font — font settings\n  Justification — 0=Left, 1=Center, 2=Right\n\nButton:\n  BackgroundColor — button tint color\n  bIsFocusable — whether keyboard focus is allowed\n\nImage:\n  ColorAndOpacity — tint\n\nProgressBar:\n  Percent — 0.0 to 1.0 fill value\n  FillColorAndOpacity — bar color\n\nSlider:\n  Value — 0.0 to 1.0\n  MinValue, MaxValue — range\n\nCheckBox:\n  bIsChecked — initial checked state\n\nAny widget:\n  Visibility — 0=Visible, 1=Collapsed, 2=Hidden\n  bIsEnabled — whether the widget accepts input\n  ToolTipText — hover tooltip\n  RenderOpacity — 0.0=transparent to 1.0=opaque",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Exact name of the target widget (as shown in get_widget_tree)"
+          },
+          "property_name": {
+            "type": "string",
+            "description": "Exact C++ property name. Examples: Text, ColorAndOpacity, Visibility, Percent, bIsEnabled, BackgroundColor, Justification"
+          },
+          "property_value": {
+            "type": "string",
+            "description": "String-serialized value. Examples: 'Hello World' for text, '(R=1.0,G=0.5,B=0.0,A=1.0)' for color, '0' for Visible, '1' for Collapsed, 'true' or 'false' for booleans, '0.75' for floats"
+          }
+        },
+        "required": ["asset_path", "widget_name", "property_name", "property_value"]
+      }
+    },
+
+    {
+      "name": "get_widget_tree",
+      "description": "Read-only query: return the full widget hierarchy of a Widget Blueprint as JSON.\n\nReturns a list of all widgets with:\n  - name: exact widget name (use this for add_widget parent_widget and set_widget_property widget_name)\n  - class: widget class (tells you if it's a panel/container)\n  - is_root: whether this is the root widget\n  - is_panel: true = can be used as parent_widget in add_widget\n  - child_count: number of direct children (for panels)\n\nCall this BEFORE add_widget or set_widget_property to know exact widget names.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to inspect"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "compile_widget_blueprint",
+      "description": "Compile a Widget Blueprint and return all errors and warnings.\n\nWidget Blueprints use the same compiler as regular Blueprint actors. Call after building the widget tree and wiring graph logic to verify correctness.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to compile"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    }
+  ]
+}

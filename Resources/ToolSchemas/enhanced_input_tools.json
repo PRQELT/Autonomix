@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "category": "input",
+  "tools": [
+    {
+      "name": "create_input_action",
+      "description": "Create a UInputAction data asset (IA_*). This is an Enhanced Input action asset that defines a conceptual input command (e.g., IA_Jump, IA_Move, IA_Look, IA_ToggleCamera). The value_type determines the data shape: Boolean for digital buttons, Axis1D for single-axis (triggers), Axis2D for 2D movement/look, Axis3D for spatial input.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Full content path for the new Input Action asset (e.g., /Game/ThirdPerson/Input/Actions/IA_ToggleCamera)"
+          },
+          "value_type": {
+            "type": "string",
+            "description": "Input value type: Boolean (digital on/off), Axis1D (float), Axis2D (Vector2D), Axis3D (Vector). Default: Boolean",
+            "enum": ["Boolean", "Axis1D", "Axis2D", "Axis3D"]
+          },
+          "consume_input": {
+            "type": "boolean",
+            "description": "Whether this action consumes the input, preventing it from reaching other actions. Default: true"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "create_input_mapping_context",
+      "description": "Create a UInputMappingContext data asset (IMC_*). This is an Enhanced Input mapping context that holds a collection of key-to-action bindings. Mapping contexts are swappable at runtime and have priorities to control which bindings take precedence.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Full content path for the new Input Mapping Context asset (e.g., /Game/ThirdPerson/Input/IMC_Default)"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "add_input_mapping",
+      "description": "Add a hardware key binding to an existing Input Mapping Context, mapping a specific key to an Input Action. Optionally attach input modifiers (Negate, Swizzle, DeadZone, Scalar) and triggers (Pressed, Released, Hold, Tap, Pulse) to the binding.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "mapping_context_path": {
+            "type": "string",
+            "description": "Content path of the Input Mapping Context to modify (e.g., /Game/ThirdPerson/Input/IMC_Default)"
+          },
+          "action_path": {
+            "type": "string",
+            "description": "Content path of the Input Action to bind (e.g., /Game/ThirdPerson/Input/Actions/IA_ToggleCamera)"
+          },
+          "key": {
+            "type": "string",
+            "description": "Hardware key name (e.g., C, SpaceBar, W, S, A, D, LeftMouseButton, RightMouseButton, Gamepad_FaceButton_Bottom, Mouse2D, Gamepad_LeftThumbstick_2D)"
+          },
+          "modifiers": {
+            "type": "array",
+            "description": "Optional list of input modifiers to apply to this mapping",
+            "items": {
+              "type": "string",
+              "enum": ["Negate", "Swizzle", "DeadZone", "Scalar"]
+            }
+          },
+          "triggers": {
+            "type": "array",
+            "description": "Optional list of input triggers to apply to this mapping. If omitted, the default trigger behavior applies (Pressed).",
+            "items": {
+              "type": "string",
+              "enum": ["Pressed", "Released", "Hold", "Tap", "Pulse"]
+            }
+          }
+        },
+        "required": ["mapping_context_path", "action_path", "key"]
+      }
+    }
+  ]
+}

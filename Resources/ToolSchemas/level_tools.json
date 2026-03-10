@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "level_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "spawn_actor",
+      "description": "Spawn an actor in the current level at a specified location and rotation. Can spawn built-in classes or Blueprint actors by content path.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "Actor class name (StaticMeshActor, PointLight, DirectionalLight, CameraActor, PlayerStart) or Blueprint content path (e.g. /Game/Blueprints/BP_MyActor)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Actor label in the outliner"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "rotation": {
+            "type": "object",
+            "properties": {
+              "pitch": { "type": "number" },
+              "yaw": { "type": "number" },
+              "roll": { "type": "number" }
+            }
+          }
+        },
+        "required": ["class"]
+      }
+    },
+    {
+      "name": "place_light",
+      "description": "Place a light actor in the current level.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "light_type": {
+            "type": "string",
+            "enum": ["PointLight", "DirectionalLight", "SpotLight", "RectLight"],
+            "description": "Type of light"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          }
+        },
+        "required": ["light_type"]
+      }
+    },
+    {
+      "name": "modify_world_settings",
+      "description": "Modify World Settings for the current level. Can set the GameMode override, kill Z, default pawn class, and other world properties.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "game_mode_override": {
+            "type": "string",
+            "description": "Blueprint content path or class name for the GameMode override, e.g. /Game/Blueprints/BP_MyGameMode"
+          },
+          "default_pawn_class": {
+            "type": "string",
+            "description": "Blueprint content path or class name for the default pawn class"
+          },
+          "kill_z": {
+            "type": "number",
+            "description": "Kill Z value — actors below this Z coordinate are destroyed"
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

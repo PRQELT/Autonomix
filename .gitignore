@@ -1,0 +1,40 @@
+# Unreal Engine generated
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+Build/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Compiled
+*.obj
+*.pdb
+*.lib
+*.dll
+*.exe
+*.exp
+
+# Unreal specific
+*.VC.db
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.opendb
+
+# User settings (API keys are stored here - NEVER commit)
+Config/

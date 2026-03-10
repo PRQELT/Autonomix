@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "sourcecontrol_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "source_control_status",
+      "description": "Get the source control status of files.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Absolute file paths to check"
+          }
+        },
+        "required": [
+          "file_paths"
+        ]
+      }
+    },
+    {
+      "name": "source_control_checkout",
+      "description": "Check out files for editing from source control.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files to check out"
+          }
+        },
+        "required": [
+          "file_paths"
+        ]
+      }
+    },
+    {
+      "name": "source_control_add",
+      "description": "Mark files for add to source control.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files to mark for add"
+          }
+        },
+        "required": [
+          "file_paths"
+        ]
+      }
+    },
+    {
+      "name": "source_control_revert",
+      "description": "Revert files to their source control state.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files to revert"
+          }
+        },
+        "required": [
+          "file_paths"
+        ]
+      }
+    }
+  ]
+}

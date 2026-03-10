@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "settings_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "read_config_value",
+      "description": "Read a value from the project's INI configuration files.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "config_file": {
+            "type": "string",
+            "description": "Config filename: DefaultEngine, DefaultGame, DefaultEditor, DefaultInput"
+          },
+          "section": {
+            "type": "string",
+            "description": "INI section, e.g. /Script/Engine.RendererSettings"
+          },
+          "key": {
+            "type": "string",
+            "description": "Setting key name"
+          }
+        },
+        "required": [
+          "config_file",
+          "section",
+          "key"
+        ]
+      }
+    },
+    {
+      "name": "write_config_value",
+      "description": "Write a value to the project's INI configuration files.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "config_file": {
+            "type": "string",
+            "description": "Config filename: DefaultEngine, DefaultGame, DefaultEditor, DefaultInput"
+          },
+          "section": {
+            "type": "string",
+            "description": "INI section"
+          },
+          "key": {
+            "type": "string",
+            "description": "Setting key name"
+          },
+          "value": {
+            "type": "string",
+            "description": "New value to set"
+          }
+        },
+        "required": [
+          "config_file",
+          "section",
+          "key",
+          "value"
+        ]
+      }
+    }
+  ]
+}
