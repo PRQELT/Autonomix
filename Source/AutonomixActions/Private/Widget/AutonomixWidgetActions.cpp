@@ -1227,7 +1227,7 @@ FAutonomixActionResult FAutonomixWidgetActions::ExecuteSetWidgetFont(const TShar
 
 	Result.bSuccess = true;
 	Result.ResultMessage = FString::Printf(TEXT("Set font on '%s': size=%d%s%s."),
-		*WidgetName, FontInfo.Size,
+		*WidgetName, static_cast<int32>(FontInfo.Size),
 		!Typeface.IsEmpty() ? *FString::Printf(TEXT(", typeface=%s"), *Typeface) : TEXT(""),
 		!FontFamily.IsEmpty() ? *FString::Printf(TEXT(", family=%s"), *FontFamily) : TEXT(""));
 	Result.ModifiedAssets.Add(AssetPath);
