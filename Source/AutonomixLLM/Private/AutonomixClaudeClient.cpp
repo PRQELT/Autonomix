@@ -56,7 +56,7 @@ void FAutonomixClaudeClient::SendMessageInternal(
 	if (ApiKey.IsEmpty())
 	{
 		UE_LOG(LogAutonomix, Error, TEXT("ClaudeClient: API key is not set. Cannot send request."));
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(TEXT("Anthropic")));
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}
@@ -461,7 +461,7 @@ void FAutonomixClaudeClient::HandleRequestComplete(
 	if (!bConnectedSuccessfully || !Response.IsValid())
 	{
 		UE_LOG(LogAutonomix, Error, TEXT("ClaudeClient: Connection failed."));
-		FAutonomixHTTPError Err = FAutonomixHTTPError::ConnectionFailed();
+		FAutonomixHTTPError Err = FAutonomixHTTPError::ConnectionFailed(TEXT("Anthropic"));
 		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;
@@ -528,7 +528,7 @@ void FAutonomixClaudeClient::HandleRequestComplete(
 		FString ResponseBody = Response->GetContentAsString().Left(500);
 		UE_LOG(LogAutonomix, Error, TEXT("ClaudeClient: HTTP %d -- %s"), ResponseCode, *ResponseBody);
 
-		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(ResponseCode, ResponseBody);
+		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(ResponseCode, ResponseBody, TEXT("Anthropic"));
 		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;
@@ -652,7 +652,7 @@ void FAutonomixClaudeClient::ScheduleRetryWithBackoff()
 	FAutonomixHTTPError RateLimitInfo;
 	RateLimitInfo.Type = EAutonomixHTTPErrorType::RateLimited;
 	RateLimitInfo.UserFriendlyMessage = FString::Printf(
-		TEXT("Rate limited. Retrying in %.0f seconds... (attempt %d/5)"), DelaySeconds, ConsecutiveRateLimits);
+		TEXT("Rate limited by Anthropic. Retrying in %.0f seconds... (attempt %d/5)"), DelaySeconds, ConsecutiveRateLimits);
 	ErrorReceivedDelegate.Broadcast(RateLimitInfo);
 
 	// CRITICAL FIX: Capture a TWeakPtr to avoid use-after-free if the client is destroyed

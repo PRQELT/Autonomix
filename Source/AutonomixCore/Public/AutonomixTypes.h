@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
 #include "AutonomixTypes.generated.h"
 
 // ============================================================================
@@ -722,47 +723,93 @@ struct AUTONOMIXCORE_API FAutonomixHTTPError
 	FString RawMessage;
 	FString UserFriendlyMessage;
 
-	/** Build a user-friendly message from status code */
-	static FAutonomixHTTPError FromStatusCode(int32 Code, const FString& ResponseBody)
+	/** Build a user-friendly message from status code.
+	 *  ProviderName is used in the error message so users see the correct provider
+	 *  (e.g. "Rate limited by Google Gemini" instead of a hardcoded provider name). */
+	static FAutonomixHTTPError FromStatusCode(int32 Code, const FString& ResponseBody, const FString& ProviderName = TEXT("API"))
 	{
 		FAutonomixHTTPError Err;
 		Err.StatusCode = Code;
 		Err.RawMessage = ResponseBody;
 
-		if (Code == 401)
+		// Try to extract a clean error message from the JSON response body.
+		// All major providers (Anthropic, OpenAI, Google, DeepSeek) return JSON error bodies.
+		// Formats: {"error":{"message":"..."}} (OpenAI/Anthropic) or {"error":{"message":"...", "status":"..."}} (Google)
+		FString CleanMessage;
 		{
+			TSharedPtr<FJsonObject> ErrJson;
+			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
+			if (FJsonSerializer::Deserialize(Reader, ErrJson) && ErrJson.IsValid())
+			{
+				const TSharedPtr<FJsonObject>* ErrorObj = nullptr;
+				if (ErrJson->TryGetObjectField(TEXT("error"), ErrorObj))
+				{
+					(*ErrorObj)->TryGetStringField(TEXT("message"), CleanMessage);
+				}
+				// Some APIs put message at root level
+				if (CleanMessage.IsEmpty())
+				{
+					ErrJson->TryGetStringField(TEXT("message"), CleanMessage);
+				}
+			}
+		}
+
+		if (Code == 401 || Code == 403)
+		{
+			// 401 = Unauthorized (Anthropic, OpenAI, DeepSeek, Mistral, xAI)
+			// 403 = Forbidden (Google Gemini uses 403 for invalid/disabled API keys)
 			Err.Type = EAutonomixHTTPErrorType::Unauthorized;
-			Err.UserFriendlyMessage = TEXT("Invalid API key. Check your key in Project Settings > Plugins > Autonomix.");
+			if (!CleanMessage.IsEmpty())
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("%s: %s\nCheck your API key in Project Settings > Plugins > Autonomix."), *ProviderName, *CleanMessage);
+			}
+			else
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("Invalid API key. Check your %s key in Project Settings > Plugins > Autonomix."), *ProviderName);
+			}
 		}
 		else if (Code == 429)
 		{
 			Err.Type = EAutonomixHTTPErrorType::RateLimited;
-			Err.UserFriendlyMessage = TEXT("Rate limited by Anthropic. Please wait a moment before retrying.");
+			Err.UserFriendlyMessage = FString::Printf(
+				TEXT("Rate limited by %s. Please wait a moment before retrying."), *ProviderName);
 		}
 		else if (Code == 400)
 		{
 			Err.Type = EAutonomixHTTPErrorType::InvalidResponse;
-			Err.UserFriendlyMessage = FString::Printf(TEXT("Bad request: %s"), *ResponseBody.Left(200));
+			FString Detail = !CleanMessage.IsEmpty() ? CleanMessage : ResponseBody.Left(200);
+			Err.UserFriendlyMessage = FString::Printf(TEXT("Bad request: %s"), *Detail);
+		}
+		else if (Code == 404)
+		{
+			Err.Type = EAutonomixHTTPErrorType::InvalidResponse;
+			Err.UserFriendlyMessage = FString::Printf(
+				TEXT("%s endpoint or model not found (HTTP 404). Check your model ID and base URL in settings."), *ProviderName);
 		}
 		else if (Code >= 500)
 		{
 			Err.Type = EAutonomixHTTPErrorType::ServerError;
-			Err.UserFriendlyMessage = TEXT("Anthropic server error. This is temporary -- please retry.");
+			Err.UserFriendlyMessage = FString::Printf(
+				TEXT("%s server error (HTTP %d). This is temporary -- please retry."), *ProviderName, Code);
 		}
 		else
 		{
 			Err.Type = EAutonomixHTTPErrorType::Unknown;
-			Err.UserFriendlyMessage = FString::Printf(TEXT("HTTP %d: %s"), Code, *ResponseBody.Left(200));
+			FString Detail = !CleanMessage.IsEmpty() ? CleanMessage : ResponseBody.Left(200);
+			Err.UserFriendlyMessage = FString::Printf(TEXT("%s HTTP %d: %s"), *ProviderName, Code, *Detail);
 		}
 
 		return Err;
 	}
 
-	static FAutonomixHTTPError ConnectionFailed()
+	static FAutonomixHTTPError ConnectionFailed(const FString& ProviderName = TEXT("API"))
 	{
 		FAutonomixHTTPError Err;
 		Err.Type = EAutonomixHTTPErrorType::NetworkError;
-		Err.UserFriendlyMessage = TEXT("Could not connect to Anthropic API. Check your internet connection.");
+		Err.UserFriendlyMessage = FString::Printf(
+			TEXT("Could not connect to %s. Check your internet connection."), *ProviderName);
 		return Err;
 	}
 

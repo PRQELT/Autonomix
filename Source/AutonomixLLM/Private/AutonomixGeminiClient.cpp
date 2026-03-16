@@ -58,7 +58,7 @@ void FAutonomixGeminiClient::SendMessage(
 	if (ApiKey.IsEmpty())
 	{
 		UE_LOG(LogAutonomix, Error, TEXT("GeminiClient: API key not set."));
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(TEXT("Google Gemini")));
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}
@@ -102,7 +102,7 @@ void FAutonomixGeminiClient::SendMessage(
 	else
 	{
 		bRequestInFlight = false;
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(TEXT("Google Gemini")));
 		RequestCompletedDelegate.Broadcast(false);
 	}
 }
@@ -376,7 +376,7 @@ void FAutonomixGeminiClient::HandleRequestComplete(
 
 	if (!bConnected || !Response.IsValid())
 	{
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(TEXT("Google Gemini")));
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}
@@ -384,7 +384,7 @@ void FAutonomixGeminiClient::HandleRequestComplete(
 	int32 Code = Response->GetResponseCode();
 	if (Code != 200)
 	{
-		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(Code, Response->GetContentAsString());
+		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(Code, Response->GetContentAsString(), TEXT("Google Gemini"));
 		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;

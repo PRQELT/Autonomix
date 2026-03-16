@@ -51,6 +51,23 @@ static FString SanitizeCallId(const FString& Id)
 	return Sanitized.Left(PrefixLen) + TEXT("_") + Hash;
 }
 
+/** Get a human-readable provider name for error messages */
+static FString GetProviderDisplayName(EAutonomixProvider Provider)
+{
+	switch (Provider)
+	{
+	case EAutonomixProvider::OpenAI:     return TEXT("OpenAI");
+	case EAutonomixProvider::DeepSeek:   return TEXT("DeepSeek");
+	case EAutonomixProvider::Mistral:    return TEXT("Mistral");
+	case EAutonomixProvider::xAI:        return TEXT("xAI");
+	case EAutonomixProvider::OpenRouter: return TEXT("OpenRouter");
+	case EAutonomixProvider::Ollama:     return TEXT("Ollama");
+	case EAutonomixProvider::LMStudio:   return TEXT("LM Studio");
+	case EAutonomixProvider::Custom:     return TEXT("Custom API");
+	default:                             return TEXT("API");
+	}
+}
+
 FAutonomixOpenAICompatClient::FAutonomixOpenAICompatClient()
 	: BaseUrl(TEXT("https://api.openai.com/v1"))
 	, ModelId(TEXT("gpt-4o"))
@@ -103,7 +120,7 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	if (ApiKey.IsEmpty() && Provider != EAutonomixProvider::Ollama && Provider != EAutonomixProvider::LMStudio)
 	{
 		UE_LOG(LogAutonomix, Error, TEXT("OpenAICompatClient: API key not set for provider %d."), (int32)Provider);
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(GetProviderDisplayName(Provider)));
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}
@@ -176,7 +193,7 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	else
 	{
 		bRequestInFlight = false;
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(GetProviderDisplayName(Provider)));
 		RequestCompletedDelegate.Broadcast(false);
 	}
 }
@@ -1233,7 +1250,7 @@ void FAutonomixOpenAICompatClient::HandleRequestComplete(
 
 	if (!bConnected || !Response.IsValid())
 	{
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed());
+		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(GetProviderDisplayName(Provider)));
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}
@@ -1247,7 +1264,8 @@ void FAutonomixOpenAICompatClient::HandleRequestComplete(
 		FAutonomixHTTPError Err;
 		Err.Type = EAutonomixHTTPErrorType::RateLimited;
 		Err.StatusCode = 429;
-		Err.UserFriendlyMessage = TEXT("Rate limited. Please wait a moment before retrying.");
+		Err.UserFriendlyMessage = FString::Printf(
+			TEXT("Rate limited by %s. Please wait a moment before retrying."), *GetProviderDisplayName(Provider));
 		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;
@@ -1255,7 +1273,7 @@ void FAutonomixOpenAICompatClient::HandleRequestComplete(
 
 	if (Code != 200)
 	{
-		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(Code, Response->GetContentAsString());
+		FAutonomixHTTPError Err = FAutonomixHTTPError::FromStatusCode(Code, Response->GetContentAsString(), GetProviderDisplayName(Provider));
 		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;
