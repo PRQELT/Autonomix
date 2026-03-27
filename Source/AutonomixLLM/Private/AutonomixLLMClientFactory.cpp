@@ -97,6 +97,16 @@ TSharedPtr<IAutonomixLLMClient> FAutonomixLLMClientFactory::CreateClientForProvi
 		Client->SetStreamingEnabled(false);
 		UE_LOG(LogAutonomix, Log, TEXT("LLMClientFactory: Streaming auto-disabled for local provider %s (non-SSE compatible)."),
 			*ModelId);
+
+		// Pass Ollama context size (num_ctx) — defaults to 8192 in settings.
+		// Ollama's internal default is only 2048, which is far too small for Autonomix's
+		// system prompt + 93 tool schemas + project context.
+		// Roo Code native-ollama.ts: passes options.num_ctx when ollamaNumCtx is set.
+		if (Settings->OllamaContextSize > 0)
+		{
+			Client->SetOllamaContextSize(Settings->OllamaContextSize);
+			UE_LOG(LogAutonomix, Log, TEXT("LLMClientFactory: Ollama num_ctx = %d"), Settings->OllamaContextSize);
+		}
 	}
 
 	switch (Provider)
