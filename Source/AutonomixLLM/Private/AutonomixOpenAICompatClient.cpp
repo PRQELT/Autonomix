@@ -277,6 +277,18 @@ void FAutonomixOpenAICompatClient::SendMessage(
 		CurrentRequest->SetHeader(TEXT("X-Title"), TEXT("Autonomix UE Plugin"));
 	}
 
+	// GitHub Copilot requires extra headers for chat completions
+	if (Provider == EAutonomixProvider::GitHubCopilot)
+	{
+		CurrentRequest->SetHeader(TEXT("Copilot-Integration-Id"), TEXT("vscode-chat"));
+		CurrentRequest->SetHeader(TEXT("Editor-Version"), TEXT("vscode/1.104.3"));
+		CurrentRequest->SetHeader(TEXT("Editor-Plugin-Version"), TEXT("copilot-chat/0.26.7"));
+		CurrentRequest->SetHeader(TEXT("User-Agent"), TEXT("GitHubCopilotChat/0.26.7"));
+		CurrentRequest->SetHeader(TEXT("OpenAI-Intent"), TEXT("conversation-panel"));
+		// Need modern API version to get proper gpt-4o proxying
+		CurrentRequest->SetHeader(TEXT("X-GitHub-Api-Version"), TEXT("2025-04-01"));
+	}
+
 	CurrentRequest->SetContentAsString(BodyString);
 	const UAutonomixDeveloperSettings* Settings = UAutonomixDeveloperSettings::Get();
 	CurrentRequest->SetTimeout((float)(Settings ? Settings->RequestTimeoutSeconds : 120));
@@ -1077,6 +1089,19 @@ TArray<TSharedPtr<FJsonValue>> FAutonomixOpenAICompatClient::ConvertMessagesToJs
 							Func->SetStringField(TEXT("name"), TUName);
 							Func->SetStringField(TEXT("arguments"), InputStr);
 							TC->SetObjectField(TEXT("function"), Func);
+
+							// Gemini proxy (GitHub Copilot / OpenRouter) requires past function calls to provide a thought_signature.
+							// According to Google API docs, we can use "skip_thought_signature_validator" to bypass this.
+							// This prevents HTTP 400 when submitting tool histories back to Gemini models mapped to the OpenAI API structure.
+							if (ModelId.Contains(TEXT("gemini"), ESearchCase::IgnoreCase))
+							{
+								TSharedPtr<FJsonObject> ExtraContentObj = MakeShared<FJsonObject>();
+								TSharedPtr<FJsonObject> GoogleObj = MakeShared<FJsonObject>();
+								GoogleObj->SetStringField(TEXT("thought_signature"), TEXT("skip_thought_signature_validator"));
+								ExtraContentObj->SetObjectField(TEXT("google"), GoogleObj);
+								TC->SetObjectField(TEXT("extra_content"), ExtraContentObj);
+							}
+
 							ToolCallsArray.Add(MakeShared<FJsonValueObject>(TC));
 						}
 					}

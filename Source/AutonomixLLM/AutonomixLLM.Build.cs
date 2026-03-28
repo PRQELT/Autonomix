@@ -21,6 +21,7 @@ public class AutonomixLLM : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
+			"ApplicationCore"
 		});
 	}
 }

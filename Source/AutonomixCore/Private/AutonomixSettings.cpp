@@ -229,6 +229,8 @@ FString UAutonomixDeveloperSettings::GetEffectiveModel() const
 		return LMStudioModelId.IsEmpty() ? TEXT("mistralai/devstral-small-2505") : LMStudioModelId;
 	case EAutonomixProvider::Custom:
 		return CustomEndpointModelId;
+	case EAutonomixProvider::GitHubCopilot:
+		return CopilotModelId.IsEmpty() ? TEXT("gpt-4") : CopilotModelId;
 	default:
 		return ModelEnumToApiString(EAutonomixClaudeModel::Sonnet_4_6);
 	}
@@ -237,9 +239,13 @@ FString UAutonomixDeveloperSettings::GetEffectiveModel() const
 bool UAutonomixDeveloperSettings::IsActiveProviderApiKeySet() const
 {
 	FString Key = GetActiveApiKey();
-	// Local providers don't need an API key
-	if (ActiveProvider == EAutonomixProvider::Ollama || ActiveProvider == EAutonomixProvider::LMStudio)
+	// Local providers and Copilot don't need an API key configured here
+	if (ActiveProvider == EAutonomixProvider::Ollama || 
+		ActiveProvider == EAutonomixProvider::LMStudio || 
+		ActiveProvider == EAutonomixProvider::GitHubCopilot)
+	{
 		return true;
+	}
 	// Azure: also requires AzureBaseUrl and AzureDeploymentName to be usable
 	if (ActiveProvider == EAutonomixProvider::Azure)
 		return !Key.IsEmpty() && Key.Len() > 10 && !AzureBaseUrl.IsEmpty() && !AzureDeploymentName.IsEmpty();
@@ -569,5 +575,27 @@ TArray<FString> UAutonomixDeveloperSettings::GetxAIModelOptions() const
 		TEXT("grok-4-0709"),
 		TEXT("grok-3-mini"),
 		TEXT("grok-3"),
+	};
+}
+
+TArray<FString> UAutonomixDeveloperSettings::GetCopilotModelOptions() const
+{
+	// Return dynamically cached models if available
+	if (CopilotAvailableModels.Num() > 0)
+	{
+		return CopilotAvailableModels;
+	}
+
+	// Fallback to these mapped standard proxy IDs via GitHub's API if not yet cached.
+	return {
+		TEXT("gpt-4o"),
+		TEXT("gpt-4"),
+		TEXT("claude-3.5-sonnet"),
+		TEXT("claude-3.7-sonnet"),
+		TEXT("gemini-2.1-pro"),
+		TEXT("o1"),
+		TEXT("o1-preview"),
+		TEXT("o1-mini"),
+		TEXT("o3-mini")
 	};
 }

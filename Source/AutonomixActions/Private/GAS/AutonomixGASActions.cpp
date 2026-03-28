@@ -609,7 +609,7 @@ FAutonomixActionResult FAutonomixGASActions::ExecuteCreateAbility(
 	if (InstancingStr == TEXT("instanced_per_execution"))
 		InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerExecution;
 	else if (InstancingStr == TEXT("non_instanced"))
-		InstancingPolicy = EGameplayAbilityInstancingPolicy::NonInstanced;
+		InstancingPolicy = EGameplayAbilityInstancingPolicy::InstancedPerActor; // NonInstanced is deprecated
 
 	AutonomixGASReflection::SetEnumProperty(GACDO, TEXT("InstancingPolicy"), InstancingPolicy);
 	Report += FString::Printf(TEXT("Instancing: %s\n"), *InstancingStr);

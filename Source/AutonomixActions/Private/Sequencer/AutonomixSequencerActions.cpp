@@ -6,6 +6,8 @@
 #include "LevelSequence.h"
 #include "LevelSequenceActor.h"
 #include "MovieScene.h"
+#include "MovieScenePossessable.h"
+#include "MovieSceneSpawnable.h"
 #include "MovieSceneSection.h"
 #include "MovieSceneTrack.h"
 #include "Tracks/MovieScene3DTransformTrack.h"
@@ -384,11 +386,26 @@ FAutonomixActionResult FAutonomixSequencerActions::ExecuteAddSequencerKeyframe(
 			(*ScaleObj)->TryGetNumberField(TEXT("z"), Scale.Z);
 		}
 
-		// Find the 3D Transform track for the specified actor binding
-		for (const FMovieSceneBinding& Binding : MovieScene->GetBindings())
+		const TArray<FMovieSceneBinding>& Bindings = MovieScene->GetBindings();
+		for (const FMovieSceneBinding& Binding : Bindings)
 		{
-			if (!ActorLabel.IsEmpty() && Binding.GetName() != ActorLabel)
-				continue;
+			if (!ActorLabel.IsEmpty())
+			{
+				FString BindingName;
+				if (FMovieScenePossessable* Possessable = MovieScene->FindPossessable(Binding.GetObjectGuid()))
+				{
+					BindingName = Possessable->GetName();
+				}
+				else if (FMovieSceneSpawnable* Spawnable = MovieScene->FindSpawnable(Binding.GetObjectGuid()))
+				{
+					BindingName = Spawnable->GetName();
+				}
+
+				if (BindingName != ActorLabel)
+				{
+					continue;
+				}
+			}
 
 			for (UMovieSceneTrack* Track : Binding.GetTracks())
 			{

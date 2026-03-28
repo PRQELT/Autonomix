@@ -324,6 +324,23 @@ public:
 	FString CustomEndpointModelId;
 
 	// ============================================================================
+	// GitHub Copilot
+	// ============================================================================
+
+	/** The model to use when using GitHub Copilot */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "API|GitHub Copilot",
+		meta = (DisplayName = "Copilot Model", GetOptions = "GetCopilotModelOptions", ToolTip = "Select from available GitHub Copilot models."))
+	FString CopilotModelId;
+
+	/** System-wide GitHub Copilot token cache */
+	UPROPERTY(Config, BlueprintReadOnly, Category = "Hidden")
+	FString CopilotCachedDeviceCode;
+
+	/** Cached list of dynamically queried models */
+	UPROPERTY(Config, BlueprintReadOnly, Category = "Hidden")
+	TArray<FString> CopilotAvailableModels;
+
+	// ============================================================================
 	// Global Model Settings (applies across all providers)
 	// ============================================================================
 
@@ -608,6 +625,10 @@ public:
 	/** Returns known OpenAI model IDs for the settings dropdown */
 	UFUNCTION()
 	TArray<FString> GetOpenAIModelOptions() const;
+
+	/** Returns known GitHub Copilot model IDs for the settings dropdown */
+	UFUNCTION()
+	TArray<FString> GetCopilotModelOptions() const;
 
 	/** Returns known Gemini model IDs for the settings dropdown */
 	UFUNCTION()

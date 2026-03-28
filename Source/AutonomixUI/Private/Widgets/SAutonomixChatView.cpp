@@ -18,12 +18,27 @@ void SAutonomixChatView::Construct(const FArguments& InArgs)
 
 void SAutonomixChatView::AddMessage(const FAutonomixMessage& Message)
 {
+	if (Message.Content.IsEmpty())
+	{
+		return;
+	}
+
+	bool bShowRoleLabel = true;
+	if (LastMessageRole.IsSet() && LastMessageRole.GetValue() == Message.Role)
+	{
+		bShowRoleLabel = false;
+	}
+
 	MessageContainer->AddSlot()
 		.AutoHeight()
 		.Padding(4.0f, 2.0f)
 		[
-			SNew(SAutonomixMessage).Message(Message)
+			SNew(SAutonomixMessage)
+			.Message(Message)
+			.ShowRoleLabel(bShowRoleLabel)
 		];
+
+	LastMessageRole = Message.Role;
 
 	if (bAutoScroll)
 	{
@@ -55,6 +70,7 @@ void SAutonomixChatView::UpdateStreamingMessage(const FGuid& MessageId, const FS
 void SAutonomixChatView::ClearMessages()
 {
 	MessageContainer->ClearChildren();
+	LastMessageRole.Reset();
 }
 
 void SAutonomixChatView::ScrollToBottom()

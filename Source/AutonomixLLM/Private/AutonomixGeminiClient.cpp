@@ -258,6 +258,12 @@ TArray<TSharedPtr<FJsonValue>> FAutonomixGeminiClient::ConvertContents(
 							if (InputObj && InputObj->IsValid())
 								FuncCall->SetObjectField(TEXT("args"), *InputObj);
 							FuncCallPart->SetObjectField(TEXT("functionCall"), FuncCall);
+
+							// The Gemini 3/2.5 API natively requires sequential and parallel tool histories to come 
+							// bundled with a "thought_signature", or it throws HTTP 400 Bad Request.
+							// Setting this documented bypass string fixes tool continuation parsing.
+							FuncCallPart->SetStringField(TEXT("thought_signature"), TEXT("skip_thought_signature_validator"));
+
 							Parts.Add(MakeShared<FJsonValueObject>(FuncCallPart));
 						}
 					}

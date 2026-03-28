@@ -36,4 +36,6 @@ private:
 	TSharedPtr<SScrollBox> ScrollBox;
 	TSharedPtr<SVerticalBox> MessageContainer;
 	bool bAutoScroll = true;
+
+	TOptional<EAutonomixMessageRole> LastMessageRole;
 };

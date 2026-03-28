@@ -5,6 +5,7 @@
 #include "AutonomixSettings.h"
 #include "AutonomixClaudeClient.h"
 #include "AutonomixOpenAICompatClient.h"
+#include "AutonomixCopilotClient.h"
 #include "AutonomixGeminiClient.h"
 #include "AutonomixModelRegistry.h"
 
@@ -61,6 +62,17 @@ TSharedPtr<IAutonomixLLMClient> FAutonomixLLMClientFactory::CreateClientForProvi
 		Client->SetMaxTokens(Settings->MaxResponseTokens);
 		Client->SetThinkingBudget(Settings->GeminiThinkingBudgetTokens);
 		Client->SetReasoningEffort(Settings->GeminiReasoningEffort);
+		return Client;
+	}
+
+	// -------------------------------------------------------------------------
+	// GitHub Copilot
+	// -------------------------------------------------------------------------
+	if (Provider == EAutonomixProvider::GitHubCopilot)
+	{
+		TSharedPtr<FAutonomixCopilotClient> Client = MakeShared<FAutonomixCopilotClient>();
+		Client->SetModel(Settings->CopilotModelId);
+		Client->SetMaxTokens(Settings->MaxResponseTokens);
 		return Client;
 	}
 
@@ -149,6 +161,8 @@ FString FAutonomixLLMClientFactory::GetActiveProviderDisplayName()
 		return FString::Printf(TEXT("LM Studio (local) | %s"), *ModelId);
 	case EAutonomixProvider::Custom:
 		return FString::Printf(TEXT("Custom | %s"), *ModelId);
+	case EAutonomixProvider::GitHubCopilot:
+		return FString::Printf(TEXT("GitHub Copilot | %s"), *ModelId);
 	default:
 		return ModelId;
 	}

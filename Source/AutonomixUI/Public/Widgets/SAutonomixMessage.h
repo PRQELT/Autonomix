@@ -13,8 +13,9 @@
 class AUTONOMIXUI_API SAutonomixMessage : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SAutonomixMessage) {}
+	SLATE_BEGIN_ARGS(SAutonomixMessage) : _ShowRoleLabel(true) {}
 		SLATE_ARGUMENT(FAutonomixMessage, Message)
+		SLATE_ARGUMENT(bool, ShowRoleLabel)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -26,6 +27,8 @@ public:
 	FGuid GetMessageId() const { return MessageData.MessageId; }
 
 private:
+	FText GetHeaderText() const;
+
 	FAutonomixMessage MessageData;
-	TSharedPtr<class STextBlock> ContentTextBlock;
+	TSharedPtr<class SMultiLineEditableText> ContentTextBlock;
 };
