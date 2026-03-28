@@ -84,6 +84,16 @@ public:
 	TArray<TSharedPtr<FJsonObject>> GetSchemasForMode(EAutonomixAgentMode Mode) const;
 
 	/**
+	 * Get a minimal set of essential tool schemas for local providers (Ollama, LM Studio).
+	 * Local models have limited context windows (8K-64K) and can't handle 90+ tool schemas.
+	 * Without this, models respond with "I can't create files" because the tool schema
+	 * payload alone exceeds their reasoning capacity.
+	 * Returns ~15 core tools (file ops, context, meta-tools) with truncated descriptions.
+	 * Token cost: ~750 tokens (vs ~5,000+ for full set).
+	 */
+	TArray<TSharedPtr<FJsonObject>> GetEssentialSchemas() const;
+
+	/**
 	 * Get the set of tool categories allowed in a given mode.
 	 * Used to pre-filter tool execution in the ActionRouter.
 	 */

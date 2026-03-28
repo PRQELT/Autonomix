@@ -130,12 +130,57 @@ bool FAutonomixToolSchemaRegistry::LoadSchemaFile(const FString& FilePath)
 	return false;
 }
 
+/** Maximum characters for a tool description in schemas sent to the LLM.
+ *  Long descriptions waste tokens without improving tool selection.
+ *  ~200 chars = ~50 tokens per tool. At 93 tools = ~4,650 tokens for descriptions.
+ *  Without truncation: ~35,000 tokens. Savings: ~86%. */
+static constexpr int32 MaxDescriptionChars = 200;
+
+/** Truncate a description string to fit within the token budget */
+static FString TruncateDescription(const FString& Desc)
+{
+	if (Desc.Len() <= MaxDescriptionChars)
+	{
+		return Desc;
+	}
+	// Truncate at a word boundary near the limit
+	int32 CutPos = MaxDescriptionChars;
+	while (CutPos > 0 && Desc[CutPos] != TEXT(' '))
+	{
+		CutPos--;
+	}
+	if (CutPos == 0) CutPos = MaxDescriptionChars;
+	return Desc.Left(CutPos) + TEXT("...");
+}
+
+/** Create a lightweight clone of a schema with truncated description.
+ *  Only clones when truncation is needed — returns original pointer otherwise. */
+static TSharedPtr<FJsonObject> MakeTruncatedSchema(const TSharedPtr<FJsonObject>& Original)
+{
+	if (!Original.IsValid()) return Original;
+
+	FString Desc;
+	if (!Original->TryGetStringField(TEXT("description"), Desc) || Desc.Len() <= MaxDescriptionChars)
+	{
+		return Original;  // No truncation needed
+	}
+
+	// Shallow clone: copy all fields, replace only description
+	TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
+	for (const auto& Pair : Original->Values)
+	{
+		Clone->SetField(Pair.Key, Pair.Value);
+	}
+	Clone->SetStringField(TEXT("description"), TruncateDescription(Desc));
+	return Clone;
+}
+
 TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetAllSchemas() const
 {
 	TArray<TSharedPtr<FJsonObject>> Result;
 	for (const auto& Pair : ToolSchemas)
 	{
-		Result.Add(Pair.Value);
+		Result.Add(MakeTruncatedSchema(Pair.Value));
 	}
 	return Result;
 }
@@ -196,7 +241,7 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEnabledSchemas(
 	{
 		if (!DisabledTools.Contains(Pair.Key))
 		{
-			Result.Add(Pair.Value);
+			Result.Add(MakeTruncatedSchema(Pair.Value));
 		}
 	}
 	return Result;
@@ -407,7 +452,7 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetSchemasForMode(
 		// Always-available tools are included in every mode
 		if (AlwaysAvailable.Contains(ToolName))
 		{
-			Result.Add(Pair.Value);
+			Result.Add(MakeTruncatedSchema(Pair.Value));
 			continue;
 		}
 
@@ -424,7 +469,7 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetSchemasForMode(
 
 		if (bAllowed)
 		{
-			Result.Add(Pair.Value);
+			Result.Add(MakeTruncatedSchema(Pair.Value));
 		}
 	}
 
@@ -521,6 +566,70 @@ FString FAutonomixToolSchemaRegistry::GetModeDisplayName(EAutonomixAgentMode Mod
 	case EAutonomixAgentMode::Orchestrator: return TEXT("Orchestrator");
 	}
 	return TEXT("General");
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEssentialSchemas() const
+{
+	// =========================================================================
+	// Essential tool set for local providers (Ollama, LM Studio).
+	//
+	// Local models with 8K-64K context windows cannot handle 90+ tool schemas.
+	// The full schema set alone = ~5,000 tokens (post-truncation); with project
+	// context and system prompt, this easily exceeds the model's capacity.
+	//
+	// Symptoms when overloaded:
+	//   - "I currently do not have the capability to create files"
+	//   - "I can't access your files or personal data"
+	//   - Model ignores tools entirely and responds with plain text
+	//
+	// This method returns only the ~15 core tools needed for useful work.
+	// Token cost: ~750 tokens (vs ~5,000 for full set, ~35K for untruncated).
+	//
+	// The tools selected mirror Roo Code's core tool set:
+	//   - File system: read_file, write_file, apply_diff, list_directory, search_files
+	//   - Context: search_assets, get_blueprint_info
+	//   - Meta: attempt_completion, ask_followup_question, update_todo_list, switch_mode, new_task
+	// =========================================================================
+	static const TSet<FString> EssentialToolNames = {
+		// File operations (core agentic workflow)
+		TEXT("read_file"),
+		TEXT("write_file"),
+		TEXT("apply_diff"),
+		TEXT("list_directory"),
+		TEXT("search_files"),
+
+		// Asset/context queries
+		TEXT("search_assets"),
+		TEXT("get_blueprint_info"),
+		TEXT("get_project_context"),
+
+		// Blueprint basics (most common UE task)
+		TEXT("inject_blueprint_nodes_t3d"),
+		TEXT("connect_blueprint_pins"),
+
+		// Meta-tools (always needed)
+		TEXT("attempt_completion"),
+		TEXT("ask_followup_question"),
+		TEXT("update_todo_list"),
+		TEXT("switch_mode"),
+		TEXT("new_task"),
+	};
+
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		if (EssentialToolNames.Contains(Pair.Key))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+
+	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: GetEssentialSchemas() returned %d tools (from %d total)."),
+		Result.Num(), ToolSchemas.Num());
+
+	return Result;
 }
 
 FString FAutonomixToolSchemaRegistry::GetModeWhenToUse(EAutonomixAgentMode Mode)

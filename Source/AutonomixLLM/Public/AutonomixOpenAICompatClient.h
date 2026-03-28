@@ -58,6 +58,11 @@ public:
 	/** Enable/disable streaming (default: enabled) */
 	void SetStreamingEnabled(bool bEnabled);
 
+	/** Set the Ollama num_ctx value (context window size in tokens).
+	 *  When > 0, injected into the request body as {"options":{"num_ctx": N}}.
+	 *  Ollama defaults to 2048 if not set, which causes instant overflow with Autonomix's prompts. */
+	void SetOllamaContextSize(int32 InNumCtx);
+
 	/**
 	 * Set the Azure OpenAI API version string (e.g. "2024-02-01").
 	 * When non-empty, switches to Azure wire format:
@@ -142,6 +147,9 @@ private:
 	EAutonomixReasoningEffort ReasoningEffort;
 	bool bStreamingEnabled;
 	bool bUseResponsesAPI = false;  // Set per-request: true for OpenAI native (Responses API)
+
+	/** Ollama num_ctx context size. When > 0, injected into the request body. */
+	int32 OllamaNumCtx = 0;
 
 	/** Azure API version string (e.g. "2024-02-01").
 	 *  When non-empty, Azure wire format is used: 'api-key' header, ?api-version= param,

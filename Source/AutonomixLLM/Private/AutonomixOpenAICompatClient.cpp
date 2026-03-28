@@ -112,6 +112,7 @@ void FAutonomixOpenAICompatClient::SetMaxTokens(int32 InMaxTokens) { MaxTokens =
 void FAutonomixOpenAICompatClient::SetReasoningEffort(EAutonomixReasoningEffort InEffort) { ReasoningEffort = InEffort; }
 void FAutonomixOpenAICompatClient::SetStreamingEnabled(bool bEnabled) { bStreamingEnabled = bEnabled; }
 void FAutonomixOpenAICompatClient::SetAzureApiVersion(const FString& InApiVersion) { AzureApiVersion = InApiVersion; }
+void FAutonomixOpenAICompatClient::SetOllamaContextSize(int32 InNumCtx) { OllamaNumCtx = InNumCtx; }
 
 FString FAutonomixOpenAICompatClient::ReasoningEffortToString(EAutonomixReasoningEffort Effort)
 {
@@ -194,10 +195,13 @@ void FAutonomixOpenAICompatClient::SendMessage(
 
 	// ---- API type selection ----
 	// Responses API (/v1/responses): official OpenAI only (GPT-5.x, GPT-4.1, o-series).
-	// Azure OpenAI does NOT support the Responses API — always use Chat Completions.
-	// Ported from Roo Code openai.ts: Azure goes through AzureOpenAI client which uses
-	// the Chat Completions path regardless of model.
-	bUseResponsesAPI = (Provider == EAutonomixProvider::OpenAI) && !bIsAzureRequest;
+	// Azure, Ollama, LMStudio, Custom do NOT support the Responses API.
+	// User report (Issue #9): Ollama logs show requests to BOTH /v1/chat/completions
+	// AND /v1/responses — the latter is invalid for Ollama.
+	const bool bIsLocalProvider = (Provider == EAutonomixProvider::Ollama ||
+	                               Provider == EAutonomixProvider::LMStudio ||
+	                               Provider == EAutonomixProvider::Custom);
+	bUseResponsesAPI = (Provider == EAutonomixProvider::OpenAI) && !bIsAzureRequest && !bIsLocalProvider;
 
 	TSharedPtr<FJsonObject> Body = BuildRequestBody(ConversationHistory, SystemPrompt, ToolSchemas);
 	FString BodyString;
@@ -291,7 +295,18 @@ void FAutonomixOpenAICompatClient::SendMessage(
 
 	CurrentRequest->SetContentAsString(BodyString);
 	const UAutonomixDeveloperSettings* Settings = UAutonomixDeveloperSettings::Get();
-	CurrentRequest->SetTimeout((float)(Settings ? Settings->RequestTimeoutSeconds : 120));
+
+	// Local model inference on consumer GPUs can take 60-180+ seconds for
+	// large prompts. The default 120s timeout is too short — use 300s minimum.
+	// Roo Code native-ollama.ts: "The ollama npm package handles timeouts internally"
+	// (i.e. no explicit short timeout). Cloud providers keep the user's configured timeout.
+	float TimeoutSec = (float)(Settings ? Settings->RequestTimeoutSeconds : 120);
+	if (bIsLocalProvider && TimeoutSec < 300.0f)
+	{
+		TimeoutSec = 300.0f;
+		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Local provider timeout increased to 300s."));
+	}
+	CurrentRequest->SetTimeout(TimeoutSec);
 
 	CurrentMessageId = FGuid::NewGuid();
 	CurrentAssistantContent.Empty();
@@ -1002,6 +1017,25 @@ TSharedPtr<FJsonObject> FAutonomixOpenAICompatClient::BuildChatCompletionsBody(
 		}
 	}
 
+	// =========================================================================
+	// Ollama num_ctx: Controls the context window size for the model.
+	//
+	// CRITICAL: Ollama defaults to num_ctx=2048 if not specified, which is
+	// far too small for Autonomix's prompts (system prompt + tools + history
+	// = 8K-30K+ tokens). The model silently truncates, causing nonsensical
+	// responses or immediate context overflow errors.
+	//
+	// Roo Code native-ollama.ts passes this via: options: { num_ctx: N }
+	// Ollama's OpenAI-compatible endpoint accepts it in the same place.
+	// =========================================================================
+	if (OllamaNumCtx > 0 && (Provider == EAutonomixProvider::Ollama || Provider == EAutonomixProvider::LMStudio))
+	{
+		TSharedPtr<FJsonObject> OllamaOptions = MakeShared<FJsonObject>();
+		OllamaOptions->SetNumberField(TEXT("num_ctx"), (double)OllamaNumCtx);
+		Body->SetObjectField(TEXT("options"), OllamaOptions);
+		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Ollama num_ctx set to %d."), OllamaNumCtx);
+	}
+
 	// Messages array (system + history)
 	Body->SetArrayField(TEXT("messages"), ConvertMessagesToJson(History, SystemPrompt));
 
@@ -1009,7 +1043,20 @@ TSharedPtr<FJsonObject> FAutonomixOpenAICompatClient::BuildChatCompletionsBody(
 	if (ToolSchemas.Num() > 0)
 	{
 		Body->SetArrayField(TEXT("tools"), ConvertToolSchemas(ToolSchemas));
-		Body->SetStringField(TEXT("tool_choice"), TEXT("auto"));
+
+		// CRITICAL FIX (local providers): Do NOT send tool_choice for Ollama/LMStudio.
+		// Some local models (devstral, qwen, llama) do not support tool_choice and may:
+		//   - Ignore tools entirely ("I can't create files")
+		//   - Return 400 errors
+		//   - Silently drop the tools array
+		// Roo Code's native-ollama.ts never sends tool_choice — only passes the tools array.
+		// Cloud providers benefit from tool_choice:"auto" to hint tool usage.
+		const bool bIsLocalProvider = (Provider == EAutonomixProvider::Ollama ||
+		                               Provider == EAutonomixProvider::LMStudio);
+		if (!bIsLocalProvider)
+		{
+			Body->SetStringField(TEXT("tool_choice"), TEXT("auto"));
+		}
 	}
 
 	return Body;
@@ -1415,6 +1462,92 @@ void FAutonomixOpenAICompatClient::HandleRequestComplete(
 
 	ConsecutiveRateLimits = 0;
 
+	// =========================================================================
+	// NON-STREAMING RESPONSE PARSING
+	//
+	// When streaming is disabled (Ollama, LM Studio, Custom endpoints), the
+	// response body is a complete JSON object — NOT SSE events. The SSE progress
+	// handler never fires, so we must parse the full body here.
+	//
+	// Chat Completions non-streaming format:
+	// {
+	//   "choices": [{"message": {"role": "assistant", "content": "...", "tool_calls": [...]}}],
+	//   "usage": {"prompt_tokens": N, "completion_tokens": N}
+	// }
+	// =========================================================================
+	if (!bStreamingEnabled)
+	{
+		FString FullBody = Response->GetContentAsString();
+		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Non-streaming response received (%d bytes)."), FullBody.Len());
+
+		TSharedPtr<FJsonObject> ResponseObj;
+		TSharedRef<TJsonReader<>> JsonReader = TJsonReaderFactory<>::Create(FullBody);
+		if (FJsonSerializer::Deserialize(JsonReader, ResponseObj) && ResponseObj.IsValid())
+		{
+			// Extract usage
+			const TSharedPtr<FJsonObject>* UsageObj = nullptr;
+			if (ResponseObj->TryGetObjectField(TEXT("usage"), UsageObj))
+			{
+				ExtractTokenUsage(*UsageObj);
+			}
+
+			// Extract choices[0].message
+			const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
+			if (ResponseObj->TryGetArrayField(TEXT("choices"), Choices) && Choices->Num() > 0)
+			{
+				const TSharedPtr<FJsonObject>* ChoiceObj = nullptr;
+				if ((*Choices)[0]->TryGetObject(ChoiceObj))
+				{
+					const TSharedPtr<FJsonObject>* MessageObj = nullptr;
+					if ((*ChoiceObj)->TryGetObjectField(TEXT("message"), MessageObj))
+					{
+						// Text content
+						FString Content;
+						if ((*MessageObj)->TryGetStringField(TEXT("content"), Content) && !Content.IsEmpty())
+						{
+							CurrentAssistantContent = Content;
+							StreamingTextDelegate.Broadcast(CurrentMessageId, Content);
+						}
+
+						// Tool calls
+						const TArray<TSharedPtr<FJsonValue>>* ToolCalls = nullptr;
+						if ((*MessageObj)->TryGetArrayField(TEXT("tool_calls"), ToolCalls))
+						{
+							for (const TSharedPtr<FJsonValue>& TCVal : *ToolCalls)
+							{
+								const TSharedPtr<FJsonObject>* TCObj = nullptr;
+								if (!TCVal->TryGetObject(TCObj)) continue;
+
+								FPendingToolCallState State;
+								(*TCObj)->TryGetStringField(TEXT("id"), State.ToolUseId);
+								State.Index = PendingToolCallStates.Num();
+
+								const TSharedPtr<FJsonObject>* FuncObj = nullptr;
+								if ((*TCObj)->TryGetObjectField(TEXT("function"), FuncObj))
+								{
+									(*FuncObj)->TryGetStringField(TEXT("name"), State.ToolName);
+									(*FuncObj)->TryGetStringField(TEXT("arguments"), State.ArgumentsAccumulated);
+								}
+
+								PendingToolCallStates.Add(State);
+							}
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogAutonomix, Error, TEXT("OpenAICompatClient: Failed to parse non-streaming response JSON."));
+		}
+
+		FinalizeResponse();
+		return;
+	}
+
+	// =========================================================================
+	// STREAMING RESPONSE FLUSH (SSE mode only)
+	// =========================================================================
 	// CRITICAL FIX: Do NOT re-process the full response body here.
 	// HandleRequestProgress() already processed all bytes incrementally via
 	// LastBytesReceived offset tracking. Calling ProcessSSEChunk(FullBody) would

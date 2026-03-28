@@ -165,12 +165,33 @@ FString UAutonomixDeveloperSettings::GetEffectiveEndpoint() const
 	case EAutonomixProvider::OpenRouter:
 		return TEXT("https://openrouter.ai/api/v1");
 	case EAutonomixProvider::Ollama:
-		// CRITICAL FIX: Ollama's OpenAI-compatible endpoint is at /v1/chat/completions.
-		// The OpenAICompatClient appends /chat/completions, so the base must include /v1.
-		return OllamaBaseUrl.IsEmpty() ? TEXT("http://localhost:11434/v1") : OllamaBaseUrl;
+	{
+		// Roo Code uses Ollama's native SDK (/api/chat), but we use the OpenAI-compatible
+		// endpoint (/v1/chat/completions). The OpenAICompatClient appends /chat/completions,
+		// so the base URL MUST end with /v1.
+		//
+		// Users commonly set "http://localhost:11434" without /v1 → 404.
+		// Always normalize: strip trailing slash, then ensure /v1 suffix.
+		FString Base = OllamaBaseUrl.IsEmpty() ? TEXT("http://localhost:11434") : OllamaBaseUrl;
+		while (Base.EndsWith(TEXT("/"))) Base.RemoveAt(Base.Len() - 1);
+		if (!Base.EndsWith(TEXT("/v1")))
+		{
+			Base += TEXT("/v1");
+		}
+		return Base;
+	}
 	case EAutonomixProvider::LMStudio:
-		// CRITICAL FIX: LM Studio's OpenAI-compatible endpoint is at /v1/chat/completions.
-		return LMStudioBaseUrl.IsEmpty() ? TEXT("http://localhost:1234/v1") : LMStudioBaseUrl;
+	{
+		// Roo Code lm-studio.ts: baseURL = (baseUrl || "http://localhost:1234") + "/v1"
+		// Same pattern: always normalize to include /v1.
+		FString Base = LMStudioBaseUrl.IsEmpty() ? TEXT("http://localhost:1234") : LMStudioBaseUrl;
+		while (Base.EndsWith(TEXT("/"))) Base.RemoveAt(Base.Len() - 1);
+		if (!Base.EndsWith(TEXT("/v1")))
+		{
+			Base += TEXT("/v1");
+		}
+		return Base;
+	}
 	case EAutonomixProvider::Custom:
 		return CustomBaseUrl;
 	default:

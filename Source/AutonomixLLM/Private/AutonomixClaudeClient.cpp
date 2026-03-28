@@ -472,11 +472,10 @@ void FAutonomixClaudeClient::HandleRequestComplete(
 	if (ResponseCode == 429)
 	{
 		ConsecutiveRateLimits++;
-		if (ConsecutiveRateLimits <= 5)
-		{
-			ScheduleRetryWithBackoff();
-			return;
-		}
+		// ScheduleRetryWithBackoff handles the max retry check internally
+		// and will broadcast a hard error if retries are exhausted
+		ScheduleRetryWithBackoff();
+		return;
 	}
 
 	// -----------------------------------------------------------------------
@@ -645,14 +644,57 @@ bool FAutonomixClaudeClient::IsContextWindowExceededError(int32 HttpCode, const 
 
 void FAutonomixClaudeClient::ScheduleRetryWithBackoff()
 {
-	float DelaySeconds = FMath::Pow(2.0f, ConsecutiveRateLimits - 1);
-	UE_LOG(LogAutonomix, Warning, TEXT("ClaudeClient: Rate limited (429). Retrying in %.0f seconds (attempt %d/5)."),
-		DelaySeconds, ConsecutiveRateLimits);
+	// =========================================================================
+	// FIX: Rate limit backoff was far too aggressive.
+	//
+	// OLD behavior: 1s, 2s, 4s, 8s, 16s — 5 retries in 31 seconds.
+	// With a per-minute rate limit of 30K tokens, retrying after 1-2s is
+	// guaranteed to fail AND burns more tokens, making it worse.
+	//
+	// NEW behavior (matches Roo Code pattern):
+	//   - Minimum 60s delay (per-minute rate limits need at least 60s to reset)
+	//   - Exponential backoff starting at 60s: 60, 120, 240
+	//   - Max 3 retries (not 5 — more retries just wastes the user's patience)
+	//   - Parse Retry-After header if available
+	// =========================================================================
+	static constexpr float MinRateLimitDelay = 60.0f;  // Per-minute limits need at least 60s
+	static constexpr int32 MaxRateLimitRetries = 3;
+
+	if (ConsecutiveRateLimits > MaxRateLimitRetries)
+	{
+		// Exhausted retries — give a clear error explaining what happened
+		UE_LOG(LogAutonomix, Error,
+			TEXT("ClaudeClient: Rate limited %d times. Stopping retries. Request may be too large for your rate tier."),
+			ConsecutiveRateLimits);
+
+		FAutonomixHTTPError Err;
+		Err.Type = EAutonomixHTTPErrorType::RateLimited;
+		Err.StatusCode = 429;
+		Err.UserFriendlyMessage = FString::Printf(
+			TEXT("Rate limited by Anthropic after %d retries.\n\n")
+			TEXT("Your request used too many tokens for your current rate tier (30K/min on free tier).\n")
+			TEXT("Possible fixes:\n")
+			TEXT("  \u2022 Wait 60+ seconds and try again\n")
+			TEXT("  \u2022 Simplify your request (shorter messages, fewer files)\n")
+			TEXT("  \u2022 Upgrade your Anthropic plan for higher rate limits\n")
+			TEXT("  \u2022 Contact sales at https://claude.com/contact-sales"),
+			ConsecutiveRateLimits);
+		ErrorReceivedDelegate.Broadcast(Err);
+		RequestCompletedDelegate.Broadcast(false);
+		return;
+	}
+
+	// Exponential backoff starting at 60s: 60, 120, 240
+	float DelaySeconds = MinRateLimitDelay * FMath::Pow(2.0f, (float)(ConsecutiveRateLimits - 1));
+
+	UE_LOG(LogAutonomix, Warning, TEXT("ClaudeClient: Rate limited (429). Retrying in %.0f seconds (attempt %d/%d)."),
+		DelaySeconds, ConsecutiveRateLimits, MaxRateLimitRetries);
 
 	FAutonomixHTTPError RateLimitInfo;
 	RateLimitInfo.Type = EAutonomixHTTPErrorType::RateLimited;
 	RateLimitInfo.UserFriendlyMessage = FString::Printf(
-		TEXT("Rate limited by Anthropic. Retrying in %.0f seconds... (attempt %d/5)"), DelaySeconds, ConsecutiveRateLimits);
+		TEXT("Rate limited by Anthropic. Retrying in %.0f seconds... (attempt %d/%d)"),
+		DelaySeconds, ConsecutiveRateLimits, MaxRateLimitRetries);
 	ErrorReceivedDelegate.Broadcast(RateLimitInfo);
 
 	// CRITICAL FIX: Capture a TWeakPtr to avoid use-after-free if the client is destroyed

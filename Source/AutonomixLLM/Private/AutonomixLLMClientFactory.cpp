@@ -86,6 +86,41 @@ TSharedPtr<IAutonomixLLMClient> FAutonomixLLMClientFactory::CreateClientForProvi
 	Client->SetModel(ModelId);
 	Client->SetMaxTokens(Settings->MaxResponseTokens);
 
+	// =========================================================================
+	// FIX: Auto-disable streaming for local providers (Ollama, LM Studio, Custom)
+	//
+	// Local model servers (Ollama, LiteLLM, LM Studio) do NOT reliably support
+	// OpenAI-style SSE streaming for tool calls. Symptoms:
+	//   - Requests hang indefinitely
+	//   - Partial/malformed JSON tool call arguments
+	//   - Raw JSON returned instead of proper SSE events
+	//   - "Payload is incomplete" warnings from UE HTTP module
+	//
+	// The fix: disable streaming for local providers and use synchronous
+	// /v1/chat/completions responses instead. The non-streaming code path in
+	// HandleRequestComplete parses the full JSON response body directly.
+	//
+	// Users can override by explicitly enabling streaming in the UI setting.
+	// =========================================================================
+	const bool bIsLocalProvider = (Provider == EAutonomixProvider::Ollama ||
+	                               Provider == EAutonomixProvider::LMStudio);
+	if (bIsLocalProvider)
+	{
+		Client->SetStreamingEnabled(false);
+		UE_LOG(LogAutonomix, Log, TEXT("LLMClientFactory: Streaming auto-disabled for local provider %s (non-SSE compatible)."),
+			*ModelId);
+
+		// Pass Ollama context size (num_ctx) — defaults to 8192 in settings.
+		// Ollama's internal default is only 2048, which is far too small for Autonomix's
+		// system prompt + 93 tool schemas + project context.
+		// Roo Code native-ollama.ts: passes options.num_ctx when ollamaNumCtx is set.
+		if (Settings->OllamaContextSize > 0)
+		{
+			Client->SetOllamaContextSize(Settings->OllamaContextSize);
+			UE_LOG(LogAutonomix, Log, TEXT("LLMClientFactory: Ollama num_ctx = %d"), Settings->OllamaContextSize);
+		}
+	}
+
 	switch (Provider)
 	{
 	case EAutonomixProvider::OpenAI:

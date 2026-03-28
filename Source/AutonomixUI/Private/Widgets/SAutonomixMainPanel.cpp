@@ -1445,9 +1445,22 @@ void SAutonomixMainPanel::OnPromptSubmitted(const FString& PromptText)
 	FString SystemPrompt = BuildSystemPrompt();
 
 	// Phase 2: Use mode-filtered schemas
-	TArray<TSharedPtr<FJsonObject>> ToolSchemas = ToolSchemaRegistry.IsValid()
-		? ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode)
-		: TArray<TSharedPtr<FJsonObject>>();
+	// CRITICAL FIX (local providers): Local models (Ollama/LMStudio) cannot handle 90+ tools.
+	// Use GetEssentialSchemas() which returns ~15 core tools (~750 tokens) instead of
+	// the full set (~5,000 tokens). Without this, local models respond with
+	// "I can't create files" because tools overwhelm the context window.
+	const UAutonomixDeveloperSettings* ProviderSettings = UAutonomixDeveloperSettings::Get();
+	const bool bIsLocalProvider = ProviderSettings &&
+		(ProviderSettings->ActiveProvider == EAutonomixProvider::Ollama ||
+		 ProviderSettings->ActiveProvider == EAutonomixProvider::LMStudio);
+
+	TArray<TSharedPtr<FJsonObject>> ToolSchemas;
+	if (ToolSchemaRegistry.IsValid())
+	{
+		ToolSchemas = bIsLocalProvider
+			? ToolSchemaRegistry->GetEssentialSchemas()
+			: ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode);
+	}
 
 	// Phase 4: Inject MCP tool schemas if available
 	if (MCPClient.IsValid())
@@ -2152,11 +2165,18 @@ void SAutonomixMainPanel::ContinueAgenticLoop()
 	CurrentStreamingMessageId = StreamingMsg.MessageId;
 	ChatView->AddMessage(StreamingMsg);
 
-	// Phase 2: Use mode-filtered schemas based on current agent mode
+	// Phase 2: Use mode-filtered schemas (local provider: essential set only)
+	const UAutonomixDeveloperSettings* LoopSettings = UAutonomixDeveloperSettings::Get();
+	const bool bIsLocalLoop = LoopSettings &&
+		(LoopSettings->ActiveProvider == EAutonomixProvider::Ollama ||
+		 LoopSettings->ActiveProvider == EAutonomixProvider::LMStudio);
+
 	TArray<TSharedPtr<FJsonObject>> ToolSchemas;
 	if (ToolSchemaRegistry.IsValid())
 	{
-		ToolSchemas = ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode);
+		ToolSchemas = bIsLocalLoop
+			? ToolSchemaRegistry->GetEssentialSchemas()
+			: ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode);
 	}
 
 	// Use GetEffectiveHistory() -- respects condense/truncation tags
@@ -2339,6 +2359,80 @@ void SAutonomixMainPanel::OnToolCallsRejected(const FAutonomixActionPlan& Plan)
 
 FString SAutonomixMainPanel::BuildSystemPrompt() const
 {
+	// =========================================================================
+	// LOCAL PROVIDER FAST PATH — Condensed system prompt for Ollama/LMStudio
+	//
+	// Full system prompt = ~7,000+ tokens (role + tool use + guidelines + rules
+	// with Blueprint workflow + objective + project context + code structure).
+	// For a local model with 8K context, this alone fills the window, leaving
+	// no room for user messages, tools, or responses.
+	//
+	// This condensed prompt is ~800 tokens — saving ~6,000+ tokens.
+	// Combined with GetEssentialSchemas() (~750 tokens) and suppressed project
+	// context, the total overhead drops from ~42,000 to ~1,800 tokens.
+	// =========================================================================
+	{
+		const UAutonomixDeveloperSettings* LocalSettings = UAutonomixDeveloperSettings::Get();
+		const bool bIsLocalProvider = LocalSettings &&
+			(LocalSettings->ActiveProvider == EAutonomixProvider::Ollama ||
+			 LocalSettings->ActiveProvider == EAutonomixProvider::LMStudio);
+
+		if (bIsLocalProvider)
+		{
+			FString Prompt = TEXT(
+				"You are Autonomix, an AI assistant for Unreal Engine. "
+				"You have tools to read/write files, search assets, and modify Blueprints.\n\n"
+				"CRITICAL RULES:\n"
+				"- You MUST use tools to complete tasks. NEVER say 'I cannot' or 'I don't have access'.\n"
+				"- You CAN create files (write_file), read files (read_file), edit files (apply_diff), "
+				"list directories (list_directory), search files (search_files), and search assets (search_assets).\n"
+				"- Use one tool per response. Wait for results before next step.\n"
+				"- When done, call attempt_completion with a summary.\n"
+				"- Read files before modifying them.\n"
+				"- Follow UE5 conventions: UCLASS, UPROPERTY, UFUNCTION macros.\n\n"
+				"TOOL FORMAT:\n"
+				"To call a tool, respond with a tool_calls message containing the function name and arguments as JSON.\n"
+				"Example: to read a file, call read_file with {\"file_path\": \"Source/MyGame/MyActor.h\"}\n"
+				"Example: to write a file, call write_file with {\"file_path\": \"...\", \"content\": \"...\"}\n"
+				"Example: to complete, call attempt_completion with {\"result\": \"Done: created MyActor.h\"}"
+			);
+
+			// Minimal project context: just project name and engine version
+			if (ContextGatherer.IsValid())
+			{
+				FAutonomixProjectContext Ctx = ContextGatherer->BuildProjectContext();
+				Prompt += FString::Printf(TEXT("\n\nPROJECT: %s (UE %s)\nRoot: %s"),
+					*Ctx.ProjectName, *Ctx.EngineVersion, *Ctx.ProjectRootPath);
+
+				// Add asset summary counts (single line) — much cheaper than full listings
+				if (Ctx.AssetCountsByClass.Num() > 0)
+				{
+					Prompt += TEXT("\nAssets: ");
+					bool bFirst = true;
+					for (const auto& Pair : Ctx.AssetCountsByClass)
+					{
+						if (!bFirst) Prompt += TEXT(", ");
+						Prompt += FString::Printf(TEXT("%s:%d"), *Pair.Key, Pair.Value);
+						bFirst = false;
+					}
+				}
+				if (Ctx.SourceTree.Num() > 0)
+				{
+					Prompt += FString::Printf(TEXT("\nSource files: %d"), Ctx.SourceTree.Num());
+				}
+			}
+
+			UE_LOG(LogAutonomix, Log,
+				TEXT("BuildSystemPrompt: LOCAL provider — using condensed prompt (~%d chars / ~%d est. tokens)"),
+				Prompt.Len(), Prompt.Len() / 4);
+
+			return Prompt;
+		}
+	}
+	// =========================================================================
+	// CLOUD PROVIDER PATH — Full system prompt (below)
+	// =========================================================================
+
 	// ---- Role definition (mode-specific) ----
 	FString RoleDefinition;
 	if (ToolSchemaRegistry.IsValid())
