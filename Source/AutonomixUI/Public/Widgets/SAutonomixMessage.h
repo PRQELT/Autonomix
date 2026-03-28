@@ -26,6 +26,8 @@ public:
 	/** Get the message ID */
 	FGuid GetMessageId() const { return MessageData.MessageId; }
 
+	const FAutonomixMessage& GetMessageData() const { return MessageData; }
+
 private:
 	FText GetHeaderText() const;
 

@@ -1525,7 +1525,7 @@ void SAutonomixMainPanel::OnStreamingText(const FGuid& MessageId, const FString&
 {
 	if (ChatView.IsValid())
 	{
-		ChatView->UpdateStreamingMessage(CurrentStreamingMessageId, DeltaText);
+		ChatView->UpdateStreamingMessage(CurrentStreamingMessageId, DeltaText, EAutonomixMessageRole::Assistant);
 	}
 }
 

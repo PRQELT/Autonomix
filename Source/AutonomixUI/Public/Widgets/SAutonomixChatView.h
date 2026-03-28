@@ -24,7 +24,7 @@ public:
 	void AddMessage(const FAutonomixMessage& Message);
 
 	/** Update a streaming message with new delta text */
-	void UpdateStreamingMessage(const FGuid& MessageId, const FString& DeltaText);
+	void UpdateStreamingMessage(const FGuid& MessageId, const FString& DeltaText, EAutonomixMessageRole Role = EAutonomixMessageRole::None);
 
 	/** Clear all messages */
 	void ClearMessages();

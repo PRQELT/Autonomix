@@ -36,7 +36,8 @@ enum class EAutonomixMessageRole : uint8
 	Assistant	UMETA(DisplayName = "Assistant"),
 	System		UMETA(DisplayName = "System"),
 	ToolResult	UMETA(DisplayName = "Tool Result"),
-	Error		UMETA(DisplayName = "Error")
+	Error		UMETA(DisplayName = "Error"),
+	None 		UMETA(DisplayName = "None")
 };
 
 /** Type of action the AI is requesting */
