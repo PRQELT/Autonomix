@@ -117,22 +117,9 @@ public:
 	/** Get skills directory path */
 	static FString GetSkillsDirectory();
 
-	/** Write built-in skill documents if they don't exist */
-	void EnsureBuiltinSkills();
-
 private:
 	void LoadSkillFromFile(const FString& FilePath);
 	FAutonomixSkill ParseSkillDocument(const FString& Content, const FString& FilePath) const;
 
 	TArray<FAutonomixSkill> Skills;
-
-	/** Write a built-in skill to disk */
-	static void WriteBuiltinSkill(const FString& Name, const FString& Content);
-
-	// Built-in skill content
-	static const TCHAR* GetCreateActorSkillContent();
-	static const TCHAR* GetSetupInputSkillContent();
-	static const TCHAR* GetCreateInterfaceSkillContent();
-	static const TCHAR* GetAddComponentSkillContent();
-	static const TCHAR* GetSetupReplicationSkillContent();
 };
