@@ -1341,25 +1341,32 @@ FAutonomixActionResult FAutonomixWidgetActions::ExecuteSetWidgetBrush(const TSha
 	UButton* ButtonWidget = Cast<UButton>(Widget);
 	if (ButtonWidget)
 	{
+		FButtonStyle ButtonStyle = ButtonWidget->GetStyle();
+		
 		if (BrushTarget.Equals(TEXT("Normal"), ESearchCase::IgnoreCase))
 		{
-			ButtonWidget->WidgetStyle.Normal = NewBrush;
+			ButtonStyle.Normal = NewBrush;
 			bApplied = true;
 		}
 		else if (BrushTarget.Equals(TEXT("Hovered"), ESearchCase::IgnoreCase))
 		{
-			ButtonWidget->WidgetStyle.Hovered = NewBrush;
+			ButtonStyle.Hovered = NewBrush;
 			bApplied = true;
 		}
 		else if (BrushTarget.Equals(TEXT("Pressed"), ESearchCase::IgnoreCase))
 		{
-			ButtonWidget->WidgetStyle.Pressed = NewBrush;
+			ButtonStyle.Pressed = NewBrush;
 			bApplied = true;
 		}
 		else if (BrushTarget.Equals(TEXT("Disabled"), ESearchCase::IgnoreCase))
 		{
-			ButtonWidget->WidgetStyle.Disabled = NewBrush;
+			ButtonStyle.Disabled = NewBrush;
 			bApplied = true;
+		}
+		
+		if (bApplied)
+		{
+			ButtonWidget->SetStyle(ButtonStyle);
 		}
 	}
 
@@ -1375,7 +1382,9 @@ FAutonomixActionResult FAutonomixWidgetActions::ExecuteSetWidgetBrush(const TSha
 	UProgressBar* PBWidget = Cast<UProgressBar>(Widget);
 	if (PBWidget && BrushTarget.Equals(TEXT("FillImage"), ESearchCase::IgnoreCase))
 	{
-		PBWidget->WidgetStyle.FillImage = NewBrush;
+		FProgressBarStyle PBStyle = PBWidget->GetWidgetStyle();
+		PBStyle.FillImage = NewBrush;
+		PBWidget->SetWidgetStyle(PBStyle);
 		bApplied = true;
 	}
 

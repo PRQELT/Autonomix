@@ -386,7 +386,7 @@ FAutonomixActionResult FAutonomixSequencerActions::ExecuteAddSequencerKeyframe(
 			(*ScaleObj)->TryGetNumberField(TEXT("z"), Scale.Z);
 		}
 
-		const TArray<FMovieSceneBinding>& Bindings = MovieScene->GetBindings();
+		const TArray<FMovieSceneBinding>& Bindings = static_cast<const UMovieScene*>(MovieScene)->GetBindings();
 		for (const FMovieSceneBinding& Binding : Bindings)
 		{
 			if (!ActorLabel.IsEmpty())

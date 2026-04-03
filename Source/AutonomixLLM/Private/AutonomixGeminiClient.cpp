@@ -81,7 +81,9 @@ void FAutonomixGeminiClient::SendMessage(
 	CurrentRequest->SetContentAsString(BodyString);
 
 	const UAutonomixDeveloperSettings* Settings = UAutonomixDeveloperSettings::Get();
-	CurrentRequest->SetTimeout((float)(Settings ? Settings->RequestTimeoutSeconds : 120));
+	const float TimeoutSec = Settings ? (float)Settings->RequestTimeoutSeconds : 120.0f;
+	CurrentRequest->SetTimeout(TimeoutSec);
+	CurrentRequest->SetActivityTimeout(TimeoutSec);
 
 	CurrentMessageId = FGuid::NewGuid();
 	CurrentAssistantContent.Empty();

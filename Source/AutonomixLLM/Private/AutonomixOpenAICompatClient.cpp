@@ -307,6 +307,7 @@ void FAutonomixOpenAICompatClient::SendMessage(
 		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Local provider timeout increased to 300s."));
 	}
 	CurrentRequest->SetTimeout(TimeoutSec);
+	CurrentRequest->SetActivityTimeout(TimeoutSec);
 
 	CurrentMessageId = FGuid::NewGuid();
 	CurrentAssistantContent.Empty();

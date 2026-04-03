@@ -211,7 +211,7 @@ FAutonomixActionResult FAutonomixPerformanceActions::ExecuteAction(const TShared
 				int64 FileSize = IFileManager::Get().FileSize(*PackageFilePath);
 				if (FileSize > 0)
 				{
-					SizeList.Add(TPair<int64, FString>(FileSize, A.ObjectPath.ToString()));
+					SizeList.Add(TPair<int64, FString>(FileSize, A.GetObjectPathString()));
 				}
 			}
 		}

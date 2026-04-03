@@ -115,6 +115,7 @@ void FAutonomixClaudeClient::SendMessageInternal(
 	if (Settings)
 	{
 		CurrentRequest->SetTimeout(Settings->RequestTimeoutSeconds);
+		CurrentRequest->SetActivityTimeout(Settings->RequestTimeoutSeconds);
 	}
 
 	CurrentRequest->OnRequestProgress64().BindRaw(this, &FAutonomixClaudeClient::HandleRequestProgress);
