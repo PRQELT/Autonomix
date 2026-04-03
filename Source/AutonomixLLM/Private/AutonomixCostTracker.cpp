@@ -94,6 +94,25 @@ FAutonomixRequestCost FAutonomixCostTracker::CalculateRequestCost(
 	return Cost;
 }
 
+FAutonomixRequestCost FAutonomixCostTracker::CalculateCost(
+	EAutonomixProvider Provider,
+	const FString& ModelSlug,
+	const FAutonomixTokenUsage& Usage)
+{
+	// Convert slug to simple enum logic to use existing mechanism
+	EAutonomixClaudeModel Model = EAutonomixClaudeModel::Custom;
+
+	if (Provider == EAutonomixProvider::Anthropic)
+	{
+		if (ModelSlug.Contains("claude-3-7-sonnet")) Model = EAutonomixClaudeModel::Sonnet_4_6; // Mapping logic...
+		else if (ModelSlug.Contains("claude-3-5-sonnet")) Model = EAutonomixClaudeModel::Sonnet_4_5;
+		else if (ModelSlug.Contains("claude-3-opus")) Model = EAutonomixClaudeModel::Opus_4_5; // Approximate map
+		else if (ModelSlug.Contains("claude-3-5-haiku")) Model = EAutonomixClaudeModel::Haiku_4; // Approximate map
+	}
+
+	return CalculateRequestCost(Model, Usage);
+}
+
 FString FAutonomixCostTracker::FormatCost(float Cost)
 {
 	if (Cost < 0.001f)
@@ -120,6 +139,12 @@ void FAutonomixCostTracker::AddRequestCost(const FAutonomixRequestCost& RequestC
 	SessionRequestCount++;
 	CostSinceLastReset += RequestCost.TotalCost;
 	RequestCountSinceLastReset++;
+}
+
+void FAutonomixCostTracker::AddRequestCost(EAutonomixProvider Provider, const FString& ModelSlug, const FAutonomixTokenUsage& Usage)
+{
+	FAutonomixRequestCost ReqCost = CalculateCost(Provider, ModelSlug, Usage);
+	AddRequestCost(ReqCost);
 }
 
 void FAutonomixCostTracker::Reset()

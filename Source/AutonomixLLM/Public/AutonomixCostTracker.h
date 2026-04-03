@@ -48,6 +48,11 @@ public:
 	 * @param Usage    The token usage reported by the API response
 	 * @return         The calculated cost breakdown
 	 */
+	static FAutonomixRequestCost CalculateCost(
+		EAutonomixProvider Provider,
+		const FString& ModelSlug,
+		const FAutonomixTokenUsage& Usage);
+
 	static FAutonomixRequestCost CalculateRequestCost(
 		EAutonomixClaudeModel Model,
 		const FAutonomixTokenUsage& Usage);
@@ -66,6 +71,7 @@ public:
 	 * Accumulate a request cost into the session total.
 	 */
 	void AddRequestCost(const FAutonomixRequestCost& RequestCost);
+	void AddRequestCost(EAutonomixProvider Provider, const FString& ModelSlug, const FAutonomixTokenUsage& Usage);
 
 	/** Reset session totals */
 	void Reset();

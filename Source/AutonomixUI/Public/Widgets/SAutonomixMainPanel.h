@@ -76,401 +76,366 @@ class SAutonomixFileChangesPanel;
 class AUTONOMIXUI_API SAutonomixMainPanel : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SAutonomixMainPanel) {}
-	SLATE_END_ARGS()
+    SLATE_BEGIN_ARGS(SAutonomixMainPanel) {}
+    SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs);
-	virtual ~SAutonomixMainPanel();
+    void Construct(const FArguments& InArgs);
+    virtual ~SAutonomixMainPanel();
 
 private:
-	/** Per-tab state for multi-conversation sessions. */
-	struct FAutonomixConversationTabState
-	{
-		FString TabId;
-		FString Title;
-		TSharedPtr<FAutonomixConversationManager> ConversationManager;
-		TSharedPtr<FAutonomixContextManager> ContextManager;
-		FAutonomixTokenUsage SessionTokenUsage;
-		FAutonomixTokenUsage LastResponseTokenUsage;
-		float ContextUsagePercent = 0.0f;
-		float LastRequestCost = 0.0f;
-		FAutonomixCostTracker CostTracker;
-		FAutonomixAutoApprovalHandler AutoApprovalHandler;
-		bool bInAgenticLoop = false;
-		int32 AgenticLoopCount = 0;
-		int32 ConsecutiveNoToolCount = 0;
-		TArray<FAutonomixTodoItem> Todos;
-
-		// Phase 2: per-tab agent mode
-		EAutonomixAgentMode AgentMode = EAutonomixAgentMode::General;
-	};
-
-	// ---- Sub-widgets ----
-	TSharedPtr<SHorizontalBox> TabButtonContainer;
-	TSharedPtr<SAutonomixChatView> ChatView;
-	TSharedPtr<SAutonomixInputArea> InputArea;
-	TSharedPtr<SAutonomixPlanPreview> PlanPreview;
-	TSharedPtr<SAutonomixProgress> ProgressOverlay;
-	TSharedPtr<SAutonomixTodoList> TodoListWidget;
-	TSharedPtr<SButton> StopButton;
-	TSharedPtr<SButton> CondenseButton;
+    /** Per-tab state for multi-conversation sessions. */
+    struct FAutonomixConversationTabState
+    {
+        FString TabId;
+        FString Title;
+        TSharedPtr<FAutonomixConversationManager> ConversationManager;
+        TSharedPtr<FAutonomixContextManager> ContextManager;
+        FAutonomixTokenUsage SessionTokenUsage;
+        FAutonomixTokenUsage LastResponseTokenUsage;
+        float ContextUsagePercent = 0.0f;
+        float LastRequestCost = 0.0f;
+        FAutonomixCostTracker CostTracker;
+        TSharedPtr<class FAutonomixChatSession> ChatSession;
+        TArray<FAutonomixTodoItem> Todos;
 
-	// ---- Backend components ----
-	// LLMClient holds the active provider (Anthropic/OpenAI/Gemini/etc.) created by FAutonomixLLMClientFactory.
-	// Use ClaudeClientPtr() helper when Claude-specific APIs (OnContextWindowExceeded) are needed.
-	TSharedPtr<IAutonomixLLMClient> LLMClient;
-	TSharedPtr<FAutonomixConversationManager> ConversationManager;
-	TSharedPtr<FAutonomixToolSchemaRegistry> ToolSchemaRegistry;
-	TSharedPtr<FAutonomixActionRouter> ActionRouter;
-	TSharedPtr<FAutonomixExecutionJournal> ExecutionJournal;
-	TSharedPtr<FAutonomixEditorContextCapture> EditorContextCapture;
-	TSharedPtr<FAutonomixContextGatherer> ContextGatherer;
-	TSharedPtr<FAutonomixContextManager> ContextManager;
-	TSharedPtr<FAutonomixBackupManager> BackupManager;
+        // Phase 2: per-tab agent mode
+        EAutonomixAgentMode AgentMode = EAutonomixAgentMode::General;
+    };
 
-	// ---- Phase 1: Safety & Reliability ----
+    // ---- Sub-widgets ----
+    TSharedPtr<SHorizontalBox> TabButtonContainer;
+    TSharedPtr<SAutonomixChatView> ChatView;
+    TSharedPtr<SAutonomixInputArea> InputArea;
+    TSharedPtr<SAutonomixPlanPreview> PlanPreview;
+    TSharedPtr<SAutonomixProgress> ProgressOverlay;
+    TSharedPtr<SAutonomixTodoList> TodoListWidget;
+    TSharedPtr<SButton> StopButton;
+    TSharedPtr<SButton> CondenseButton;
 
-	/** Detects consecutive identical tool calls to prevent infinite loops */
-	TSharedPtr<FAutonomixToolRepetitionDetector> ToolRepetitionDetector;
+    // ---- Backend components ----
+    // LLMClient holds the active provider (Anthropic/OpenAI/Gemini/etc.) created by FAutonomixLLMClientFactory.
+    // Use ClaudeClientPtr() helper when Claude-specific APIs (OnContextWindowExceeded) are needed.
+    TSharedPtr<IAutonomixLLMClient> LLMClient;
+    TSharedPtr<FAutonomixConversationManager> ConversationManager;
+    TSharedPtr<FAutonomixToolSchemaRegistry> ToolSchemaRegistry;
+    TSharedPtr<FAutonomixActionRouter> ActionRouter;
+    TSharedPtr<FAutonomixExecutionJournal> ExecutionJournal;
+    TSharedPtr<FAutonomixEditorContextCapture> EditorContextCapture;
+    TSharedPtr<FAutonomixContextGatherer> ContextGatherer;
+    TSharedPtr<FAutonomixContextManager> ContextManager;
+    TSharedPtr<FAutonomixBackupManager> BackupManager;
 
-	/** Manages .autonomixignore file — blocks AI from accessing excluded paths */
-	TSharedPtr<FAutonomixIgnoreController> IgnoreController;
+    // ---- Phase 1: Safety & Reliability ----
 
-	/** Tracks files the AI has read; detects when user edits them externally */
-	TSharedPtr<FAutonomixFileContextTracker> FileContextTracker;
+    /** Detects consecutive identical tool calls to prevent infinite loops */
+    TSharedPtr<FAutonomixToolRepetitionDetector> ToolRepetitionDetector;
 
-	// ---- Phase 2: Developer Productivity ----
+    /** Manages .autonomixignore file — blocks AI from accessing excluded paths */
+    TSharedPtr<FAutonomixIgnoreController> IgnoreController;
 
-	/** Builds fresh per-message environment details (open files, errors, selection, etc.) */
-	TSharedPtr<FAutonomixEnvironmentDetails> EnvironmentDetails;
+    /** Tracks files the AI has read; detects when user edits them externally */
+    TSharedPtr<FAutonomixFileContextTracker> FileContextTracker;
 
-	/** Applies fuzzy multi-search-replace diffs with Levenshtein matching */
-	TSharedPtr<FAutonomixDiffApplicator> DiffApplicator;
+    // ---- Phase 2: Developer Productivity ----
 
-	// ---- Cost & Auto-Approval Tracking ----
+    /** Builds fresh per-message environment details (open files, errors, selection, etc.) */
+    TSharedPtr<FAutonomixEnvironmentDetails> EnvironmentDetails;
 
-	/** Tracks per-request and session costs */
-	FAutonomixCostTracker CostTracker;
+    /** Applies fuzzy multi-search-replace diffs with Levenshtein matching */
+    TSharedPtr<FAutonomixDiffApplicator> DiffApplicator;
 
-	/** Tracks consecutive auto-approved requests and cumulative cost */
-	FAutonomixAutoApprovalHandler AutoApprovalHandler;
+    // ---- Cost & Auto-Approval Tracking ----
 
-	/** Cost of the last completed API request */
-	float LastRequestCost = 0.0f;
+    /** Tracks per-request and session costs */
+    FAutonomixCostTracker CostTracker;
 
-	// ---- Agentic Loop State ----
+    /** Tracks consecutive auto-approved requests and cumulative cost */
+    FAutonomixAutoApprovalHandler AutoApprovalHandler;
 
-	/** Queue of tool calls to execute from the current response */
-	TArray<FAutonomixToolCall> ToolCallQueue;
+    /** Cost of the last completed API request */
+    float LastRequestCost = 0.0f;
 
-	/** Whether we are in an agentic loop (tool execution -> re-send) */
-	bool bInAgenticLoop = false;
+    
 
-	/** Total agentic loop iterations in the current task (informational, no hard limit) */
-	int32 AgenticLoopCount = 0;
+    // ---- Phase 2: Agent Mode (per panel, reflects active tab) ----
 
-	/** Consecutive times the AI responded without using any tools.
-	 *  Modeled after Roo Code's consecutiveMistakeCount.
-	 *  When this hits the limit, we ask the user to continue rather than hard-stopping. */
-	int32 ConsecutiveNoToolCount = 0;
-	static const int32 MaxConsecutiveNoToolResponses = 3;
+    /** Current agent mode for the active tab.
+     *  Determines: tool schema set, system prompt role, write permissions. */
+    EAutonomixAgentMode CurrentAgentMode = EAutonomixAgentMode::General;
 
-	// ---- Phase 2: Agent Mode (per panel, reflects active tab) ----
+    // ---- Phase 3: Checkpoint Manager ----
 
-	/** Current agent mode for the active tab.
-	 *  Determines: tool schema set, system prompt role, write permissions. */
-	EAutonomixAgentMode CurrentAgentMode = EAutonomixAgentMode::General;
+    /** Git-based shadow checkpoint system — saves state before each tool batch */
+    TSharedPtr<FAutonomixCheckpointManager> CheckpointManager;
 
-	// ---- Phase 3: Checkpoint Manager ----
+    /** @Reference parser — resolves @file, @errors, @selection, etc. in user input */
+    TSharedPtr<FAutonomixReferenceParser> ReferenceParser;
 
-	/** Git-based shadow checkpoint system — saves state before each tool batch */
-	TSharedPtr<FAutonomixCheckpointManager> CheckpointManager;
+    /** Task delegation — manages AI-initiated sub-tasks via new_task tool */
+    TSharedPtr<FAutonomixTaskDelegation> TaskDelegation;
 
-	/** @Reference parser — resolves @file, @errors, @selection, etc. in user input */
-	TSharedPtr<FAutonomixReferenceParser> ReferenceParser;
+    // ---- Phase 4: Advanced Features ----
 
-	/** Task delegation — manages AI-initiated sub-tasks via new_task tool */
-	TSharedPtr<FAutonomixTaskDelegation> TaskDelegation;
+    /** Task history — persists all conversation sessions with metadata */
+    TSharedPtr<FAutonomixTaskHistory> TaskHistory;
 
-	// ---- Phase 4: Advanced Features ----
+    /** Slash command registry — /new-actor, /fix-errors, etc. */
+    TSharedPtr<FAutonomixSlashCommandRegistry> SlashCommandRegistry;
 
-	/** Task history — persists all conversation sessions with metadata */
-	TSharedPtr<FAutonomixTaskHistory> TaskHistory;
+    /** Skills manager — loadable step-by-step instruction guides for Claude */
+    TSharedPtr<FAutonomixSkillsManager> SkillsManager;
 
-	/** Slash command registry — /new-actor, /fix-errors, etc. */
-	TSharedPtr<FAutonomixSlashCommandRegistry> SlashCommandRegistry;
+    /** MCP client — connects to external tool servers */
+    TSharedPtr<FAutonomixMCPClient> MCPClient;
 
-	/** Skills manager — loadable step-by-step instruction guides for Claude */
-	TSharedPtr<FAutonomixSkillsManager> SkillsManager;
+    /** Code structure parser — extracts UE class/function signatures for folded context */
+    TSharedPtr<FAutonomixCodeStructureParser> CodeStructureParser;
 
-	/** MCP client — connects to external tool servers */
-	TSharedPtr<FAutonomixMCPClient> MCPClient;
+    /** Cached folded code structure context (injected into system prompt after condensation) */
+    FString CachedCodeStructureContext;
 
-	/** Code structure parser — extracts UE class/function signatures for folded context */
-	TSharedPtr<FAutonomixCodeStructureParser> CodeStructureParser;
+    /** Update the cached code structure context from tracked files */
+    void UpdateCodeStructureContext();
 
-	/** Cached folded code structure context (injected into system prompt after condensation) */
-	FString CachedCodeStructureContext;
+    // ---- New UI widgets (Roo-Code parity) ----
 
-	/** Update the cached code structure context from tracked files */
-	void UpdateCodeStructureContext();
+    /** Context bar: colored progress bar + token/cost + mode selector + Condense button */
+    TSharedPtr<SAutonomixContextBar> ContextBar;
 
-	// ---- New UI widgets (Roo-Code parity) ----
+    /** Checkpoint timeline panel (toggled by header button) */
+    TSharedPtr<SAutonomixCheckpointPanel> CheckpointPanel;
 
-	/** Context bar: colored progress bar + token/cost + mode selector + Condense button */
-	TSharedPtr<SAutonomixContextBar> ContextBar;
+    /** Task history browser panel (toggled by header button) */
+    TSharedPtr<SAutonomixHistoryPanel> HistoryPanel;
 
-	/** Checkpoint timeline panel (toggled by header button) */
-	TSharedPtr<SAutonomixCheckpointPanel> CheckpointPanel;
+    /** Follow-up suggestions bar (shown after attempt_completion) */
+    TSharedPtr<SAutonomixFollowUpBar> FollowUpBar;
 
-	/** Task history browser panel (toggled by header button) */
-	TSharedPtr<SAutonomixHistoryPanel> HistoryPanel;
+    /** File changes panel: lists all files modified during session */
+    TSharedPtr<SAutonomixFileChangesPanel> FileChangesPanel;
 
-	/** Follow-up suggestions bar (shown after attempt_completion) */
-	TSharedPtr<SAutonomixFollowUpBar> FollowUpBar;
+    /** Whether the checkpoint panel is visible */
+    bool bShowCheckpointPanel = false;
 
-	/** File changes panel: lists all files modified during session */
-	TSharedPtr<SAutonomixFileChangesPanel> FileChangesPanel;
+    /** Whether the history panel is visible */
+    bool bShowHistoryPanel = false;
 
-	/** Whether the checkpoint panel is visible */
-	bool bShowCheckpointPanel = false;
+    /** Whether the file changes panel is visible */
+    bool bShowFileChangesPanel = false;
 
-	/** Whether the history panel is visible */
-	bool bShowHistoryPanel = false;
+    // ---- New UI event handlers ----
 
-	/** Whether the file changes panel is visible */
-	bool bShowFileChangesPanel = false;
+    /** Toggle checkpoint panel visibility */
+    FReply OnCheckpointsPanelToggled();
 
-	// ---- New UI event handlers ----
+    /** Toggle history panel visibility */
+    FReply OnHistoryPanelToggled();
 
-	/** Toggle checkpoint panel visibility */
-	FReply OnCheckpointsPanelToggled();
+    /** Toggle file changes panel visibility */
+    FReply OnFileChangesPanelToggled();
 
-	/** Toggle history panel visibility */
-	FReply OnHistoryPanelToggled();
+    /** Called when user selects a follow-up suggestion */
+    void OnFollowUpSelected(const FString& SuggestionText);
 
-	/** Toggle file changes panel visibility */
-	FReply OnFileChangesPanelToggled();
+    /** Called when user clicks Restore on a checkpoint */
+    void OnRestoreCheckpoint(const FString& CommitHash);
 
-	/** Called when user selects a follow-up suggestion */
-	void OnFollowUpSelected(const FString& SuggestionText);
+    /** Called when user clicks Diff on a checkpoint */
+    void OnViewCheckpointDiff(const FString& CommitHash);
 
-	/** Called when user clicks Restore on a checkpoint */
-	void OnRestoreCheckpoint(const FString& CommitHash);
+    /** Called when user clicks Resume on a history item */
+    void OnLoadHistoryTask(const FString& TabId);
 
-	/** Called when user clicks Diff on a checkpoint */
-	void OnViewCheckpointDiff(const FString& CommitHash);
+    /** Called when user clicks Delete on a history item */
+    void OnDeleteHistoryTask(const FString& TabId);
 
-	/** Called when user clicks Resume on a history item */
-	void OnLoadHistoryTask(const FString& TabId);
+    /** Update all live UI elements (context bar, file changes, etc.) */
+    void UpdateLiveUI();
 
-	/** Called when user clicks Delete on a history item */
-	void OnDeleteHistoryTask(const FString& TabId);
+    /** Token usage tracking */
+    FAutonomixTokenUsage SessionTokenUsage;
 
-	/** Update all live UI elements (context bar, file changes, etc.) */
-	void UpdateLiveUI();
+    /** Last reported token usage (for context management) */
+    FAutonomixTokenUsage LastResponseTokenUsage;
 
-	/** Token usage tracking */
-	FAutonomixTokenUsage SessionTokenUsage;
+    /** Context usage percentage (0-100), updated after each API response */
+    float ContextUsagePercent = 0.0f;
 
-	/** Last reported token usage (for context management) */
-	FAutonomixTokenUsage LastResponseTokenUsage;
+    // ---- Event handlers ----
 
-	/** Context usage percentage (0-100), updated after each API response */
-	float ContextUsagePercent = 0.0f;
+    /** Called when the user submits a prompt via the input area */
+    void OnPromptSubmitted(const FString& PromptText);
 
-	// ---- Event handlers ----
+    
 
-	/** Called when the user submits a prompt via the input area */
-	void OnPromptSubmitted(const FString& PromptText);
+    // ---- Delegates from ChatSession ----
+    void OnMessageAdded(const FAutonomixMessage& Message);
+    void OnMessageUpdated(const FGuid& MessageId, const FString& DeltaText);
+    void OnStatusUpdated(const FString& StatusText);
+    void OnAgentFinished(const FString& Reason);
+    void OnToolRequiresApproval(const FAutonomixActionPlan& Plan);
+    void OnRequestStarted();
+    void OnRequestCompleted(bool bSuccess);
 
-	/** Called when streaming text arrives from Claude */
-	void OnStreamingText(const FGuid& MessageId, const FString& DeltaText);
+    /** Called when an HTTP error is received */
+    void OnErrorReceived(const FAutonomixHTTPError& Error);
 
-	/** Called when a tool call is received from Claude */
-	void OnToolCallReceived(const FAutonomixToolCall& ToolCall);
+    /** Called when token usage is updated */
+    void OnTokenUsageUpdated(const FAutonomixTokenUsage& Usage);
 
-	/** Called when the full AI message is complete */
-	void OnMessageComplete(const FAutonomixMessage& Message);
+    /** Called when the Stop button is clicked */
+    FReply OnStopClicked();
 
-	/** Called when the API request starts */
-	void OnRequestStarted();
+    /** Called when the Condense Context button is clicked */
+    FReply OnCondenseContextClicked();
 
-	/** Called when the API request completes */
-	void OnRequestCompleted(bool bSuccess);
+    // ---- Todo / Task Management ----
 
-	/** Called after context management completes (async callback continuation) */
-	void OnRequestCompletedPostContextManagement();
+    /** Handle the update_todo_list meta-tool: parse markdown checklist, update widget.
+     *  Returns the tool_result string. */
+    FString HandleUpdateTodoList(const FAutonomixToolCall& ToolCall);
 
-	/** Called when an HTTP error is received */
-	void OnErrorReceived(const FAutonomixHTTPError& Error);
+    // ---- Phase 2: Mode switching ----
 
-	/** Called when token usage is updated */
-	void OnTokenUsageUpdated(const FAutonomixTokenUsage& Usage);
+    /**
+     * Handle the attempt_completion tool — TERMINATES the agentic loop.
+     * This is the PRIMARY way Claude signals "I'm done with this task."
+     * Displays the result to the user and stops processing.
+     * Returns the tool_result string sent back to Claude (for context).
+     */
+    FString HandleAttemptCompletion(const FAutonomixToolCall& ToolCall);
 
-	/** Called when the Stop button is clicked */
-	FReply OnStopClicked();
+    /** Handle the switch_mode meta-tool: change active tab's agent mode.
+     *  Returns the tool_result string. */
+    FString HandleSwitchMode(const FAutonomixToolCall& ToolCall);
 
-	/** Called when the Condense Context button is clicked */
-	FReply OnCondenseContextClicked();
+    /** Apply a mode change to the active tab and update UI + system prompt */
+    void ApplyAgentMode(EAutonomixAgentMode NewMode);
 
-	// ---- Todo / Task Management ----
+    /** Get display name for a mode (for UI display) */
+    static FString GetModeDisplayName(EAutonomixAgentMode Mode);
 
-	/** Handle the update_todo_list meta-tool: parse markdown checklist, update widget.
-	 *  Returns the tool_result string. */
-	FString HandleUpdateTodoList(const FAutonomixToolCall& ToolCall);
+    // ---- Phase 1+2: Context window overflow handling ----
 
-	// ---- Phase 2: Mode switching ----
+    /** Called by ClaudeClient when context window is exceeded.
+     *  Trims history by ContextWindowForcedKeepFraction and retries. */
+    void HandleContextWindowExceeded(int32 RetryCount);
 
-	/**
-	 * Handle the attempt_completion tool — TERMINATES the agentic loop.
-	 * This is the PRIMARY way Claude signals "I'm done with this task."
-	 * Displays the result to the user and stops processing.
-	 * Returns the tool_result string sent back to Claude (for context).
-	 */
-	FString HandleAttemptCompletion(const FAutonomixToolCall& ToolCall);
+    // ---- Phase 3: Meta-tool handlers ----
 
-	/** Handle the switch_mode meta-tool: change active tab's agent mode.
-	 *  Returns the tool_result string. */
-	FString HandleSwitchMode(const FAutonomixToolCall& ToolCall);
+    /** Handle the new_task tool: spawn a child tab and delegate to it */
+    FString HandleNewTask(const FAutonomixToolCall& ToolCall);
 
-	/** Apply a mode change to the active tab and update UI + system prompt */
-	void ApplyAgentMode(EAutonomixAgentMode NewMode);
+    /** Handle the skill tool: load a skill document and inject as context */
+    FString HandleSkillTool(const FAutonomixToolCall& ToolCall);
 
-	/** Get display name for a mode (for UI display) */
-	static FString GetModeDisplayName(EAutonomixAgentMode Mode);
+    /** Parse @references in user input and resolve to content blocks */
+    FString ResolveReferencesInInput(FString& InOutUserInput) const;
 
-	// ---- Phase 1+2: Context window overflow handling ----
+    // ---- Phase 4: Sub-task completion callback ----
 
-	/** Called by ClaudeClient when context window is exceeded.
-	 *  Trims history by ContextWindowForcedKeepFraction and retries. */
-	void HandleContextWindowExceeded(int32 RetryCount);
+    /** Called when a child tab's task completes (via attempt_completion). */
+    void OnSubTaskCompleted(const FString& SubTaskId, bool bSuccess, const FString& ResultMessage);
 
-	// ---- Phase 3: Meta-tool handlers ----
+    // ---- Agentic Loop Core ----
+    
+/** Build the per-message environment details string (injected at each API call) */
+FString BuildEnvironmentDetailsString() const;
 
-	/** Handle the new_task tool: spawn a child tab and delegate to it */
-	FString HandleNewTask(const FAutonomixToolCall& ToolCall);
+    // ---- Approval Flow ----
 
-	/** Handle the skill tool: load a skill document and inject as context */
-	FString HandleSkillTool(const FAutonomixToolCall& ToolCall);
+    /** Called when the user approves the pending tool actions */
+    void OnToolCallsApproved(const FAutonomixActionPlan& Plan);
 
-	/** Parse @references in user input and resolve to content blocks */
-	FString ResolveReferencesInInput(FString& InOutUserInput) const;
+    /** Called when the user rejects the pending tool actions */
+    void OnToolCallsRejected(const FAutonomixActionPlan& Plan);
 
-	// ---- Phase 4: Sub-task completion callback ----
+    // ---- Auto-Approval Limit Handling ----
 
-	/** Called when a child tab's task completes (via attempt_completion). */
-	void OnSubTaskCompleted(
-		const FString& SubTaskId,
-		bool bSuccess,
-		const FString& ResultMessage
-	);
+    /** Called when auto-approval limits (request count or cost) are exceeded.
+     *  Shows a dialog asking the user to confirm continuation or cancel. */
+    void HandleAutoApprovalLimitReached(const FAutonomixAutoApprovalCheck& Check);
 
-	// ---- Agentic Loop Core ----
+    // ---- Asset Checkpoints (Phase 5.2) ----
 
-	/** Process all pending tool calls, then re-send to Claude */
-	void ProcessToolCallQueue();
+    /** Create a checkpoint snapshot of all assets that will be affected by the pending tool calls.
+     *  Called before each tool execution batch so the user can restore if needed. */
+    void CreateCheckpointForToolBatch(const TArray<FAutonomixToolCall>& ToolCalls, int32 LoopIteration);
 
-	/** Execute a single tool call and return the result string */
-	FString ExecuteToolCall(const FAutonomixToolCall& ToolCall, bool& bOutIsError);
+    /** Get all asset paths that will be affected by a set of tool calls */
+    TArray<FString> GetAffectedPathsFromToolCalls(const TArray<FAutonomixToolCall>& ToolCalls) const;
 
-	/** Send the conversation back to Claude (continues the agentic loop) */
-	void ContinueAgenticLoop();
+    // ---- Helpers ----
 
-	/** Build the per-message environment details string (injected at each API call) */
-	FString BuildEnvironmentDetailsString() const;
+    /** Build the system prompt with project context + editor context */
+    FString BuildSystemPrompt() const;
 
-	// ---- Approval Flow ----
+    /** Initialize backend components with current settings */
+    void InitializeBackend();
 
-	/** Called when the user approves the pending tool actions */
-	void OnToolCallsApproved(const FAutonomixActionPlan& Plan);
+    /** Register all action executors with the router */
+    void RegisterExecutors();
 
-	/** Called when the user rejects the pending tool actions */
-	void OnToolCallsRejected(const FAutonomixActionPlan& Plan);
+    /** Configure the LLM client from developer settings.
+     *  Recreates the client when the active provider changes. */
+    void ConfigureClientFromSettings();
 
-	// ---- Auto-Approval Limit Handling ----
+    /**
+     * Get a typed pointer to the active LLM client downcast as FAutonomixClaudeClient.
+     * Returns nullptr for non-Anthropic providers that don't have context window exceeded support.
+     * Used only for Anthropic-specific features like OnContextWindowExceeded.
+     */
+    FAutonomixClaudeClient* ClaudeClientPtr() const;
 
-	/** Called when auto-approval limits (request count or cost) are exceeded.
-	 *  Shows a dialog asking the user to confirm continuation or cancel. */
-	void HandleAutoApprovalLimitReached(const FAutonomixAutoApprovalCheck& Check);
+    /** Show the privacy disclosure dialog (first use only) */
+    bool CheckPrivacyDisclosure();
 
-	// ---- Asset Checkpoints (Phase 5.2) ----
+    /** Get context window size in tokens from current settings */
+    int32 GetContextWindowTokens() const;
 
-	/** Create a checkpoint snapshot of all assets that will be affected by the pending tool calls.
-	 *  Called before each tool execution batch so the user can restore if needed. */
-	void CreateCheckpointForToolBatch(const TArray<FAutonomixToolCall>& ToolCalls, int32 LoopIteration);
+    /** The ID of the message currently being streamed */
+    FGuid CurrentStreamingMessageId;
 
-	/** Get all asset paths that will be affected by a set of tool calls */
-	TArray<FString> GetAffectedPathsFromToolCalls(const TArray<FAutonomixToolCall>& ToolCalls) const;
+    /** Whether the client is currently processing */
+    bool bIsProcessing = false;
 
-	// ---- Helpers ----
+    /** The active chat session for the current tab */
+    TSharedPtr<class FAutonomixChatSession> ActiveChatSession;
 
-	/** Build the system prompt with project context + editor context */
-	FString BuildSystemPrompt() const;
+    // ---- Message Queue (Roo Code's MessageQueueService concept) ----
 
-	/** Initialize backend components with current settings */
-	void InitializeBackend();
+    /** Messages queued while bIsProcessing == true.
+     *  When the current task finishes, the next queued message is auto-started.
+     *  Prevents the "already processing, please wait" UX problem. */
+    TArray<FString> PendingMessageQueue;
 
-	/** Register all action executors with the router */
-	void RegisterExecutors();
+    /** Process the next queued message (called when a task completes) */
+    void ProcessNextQueuedMessage();
 
-	/** Configure the LLM client from developer settings.
-	 *  Recreates the client when the active provider changes. */
-	void ConfigureClientFromSettings();
+    // ---- Multi-Tab Session State ----
 
-	/**
-	 * Get a typed pointer to the active LLM client downcast as FAutonomixClaudeClient.
-	 * Returns nullptr for non-Anthropic providers that don't have context window exceeded support.
-	 * Used only for Anthropic-specific features like OnContextWindowExceeded.
-	 */
-	FAutonomixClaudeClient* ClaudeClientPtr() const;
+    TArray<FAutonomixConversationTabState> ConversationTabs;
+    int32 ActiveTabIndex = INDEX_NONE;
+    int32 NextTabNumber = 1;
 
-	/** Show the privacy disclosure dialog (first use only) */
-	bool CheckPrivacyDisclosure();
+    FAutonomixConversationTabState* GetActiveTabState();
+    const FAutonomixConversationTabState* GetActiveTabState() const;
+    void CreateNewTab(const FString& InTitle = FString(), bool bMakeActive = true);
+    void CloseTab(int32 TabIndex);
+    void SwitchToTab(int32 TabIndex);
+    void RefreshTabStrip();
+    void RenderActiveConversation();
+    void SyncRuntimeStateToActiveTab();
+    void LoadRuntimeStateFromActiveTab();
 
-	/** Get context window size in tokens from current settings */
-	int32 GetContextWindowTokens() const;
+    void LoadTabsFromDisk();
+    void SaveTabsToDisk();
+    static FString GetTabsSessionDir();
+    static FString GetTabsManifestPath();
+    static FString MakeTabConversationFileName(const FString& TabId);
+    static FString MakeDefaultTabTitle(int32 TabNumber);
+    static bool TryParseDefaultTabNumber(const FString& Title, int32& OutNumber);
+    int32 GetNextAvailableTabNumber() const;
 
-	/** The ID of the message currently being streamed */
-	FGuid CurrentStreamingMessageId;
-
-	/** Whether the client is currently processing */
-	bool bIsProcessing = false;
-
-	// ---- Message Queue (Roo Code's MessageQueueService concept) ----
-
-	/** Messages queued while bIsProcessing == true.
-	 *  When the current task finishes, the next queued message is auto-started.
-	 *  Prevents the "already processing, please wait" UX problem. */
-	TArray<FString> PendingMessageQueue;
-
-	/** Process the next queued message (called when a task completes) */
-	void ProcessNextQueuedMessage();
-
-	// ---- Multi-Tab Session State ----
-
-	TArray<FAutonomixConversationTabState> ConversationTabs;
-	int32 ActiveTabIndex = INDEX_NONE;
-	int32 NextTabNumber = 1;
-
-	FAutonomixConversationTabState* GetActiveTabState();
-	const FAutonomixConversationTabState* GetActiveTabState() const;
-	void CreateNewTab(const FString& InTitle = FString(), bool bMakeActive = true);
-	void CloseTab(int32 TabIndex);
-	void SwitchToTab(int32 TabIndex);
-	void RefreshTabStrip();
-	void RenderActiveConversation();
-	void SyncRuntimeStateToActiveTab();
-	void LoadRuntimeStateFromActiveTab();
-
-	void LoadTabsFromDisk();
-	void SaveTabsToDisk();
-	static FString GetTabsSessionDir();
-	static FString GetTabsManifestPath();
-	static FString MakeTabConversationFileName(const FString& TabId);
-	static FString MakeDefaultTabTitle(int32 TabNumber);
-	static bool TryParseDefaultTabNumber(const FString& Title, int32& OutNumber);
-	int32 GetNextAvailableTabNumber() const;
-
-	FReply OnAddTabClicked();
+    FReply OnAddTabClicked();
 };
