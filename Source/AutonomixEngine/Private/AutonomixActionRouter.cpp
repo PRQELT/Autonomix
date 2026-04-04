@@ -57,9 +57,29 @@ static bool ValidateAssetPathParam(const TSharedPtr<FJsonObject>& Params, FStrin
 		return false;
 	}
 
+	// Strip the optional ".ObjectName" suffix from full object references.
+	// UE5 has two asset reference formats:
+	//   1. Package path:        /Game/Blueprints/BP_Character
+	//   2. Full object ref:     /Game/Blueprints/BP_Character.BP_Character
+	// FPackageName::IsValidLongPackageName() validates PACKAGE names only and
+	// rejects the '.' in format #2. The AI model often sends format #2, so we
+	// strip the suffix for validation purposes. The original path (with dot) is
+	// preserved in the params — LoadObject() accepts both formats.
+	FString PackagePath = AssetPath;
+	int32 LastSlash = INDEX_NONE;
+	PackagePath.FindLastChar(TEXT('/'), LastSlash);
+	if (LastSlash != INDEX_NONE)
+	{
+		int32 DotIndex = PackagePath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart, LastSlash);
+		if (DotIndex != INDEX_NONE)
+		{
+			PackagePath = PackagePath.Left(DotIndex);
+		}
+	}
+
 	// Use UE's built-in validation (safe — no dialog, just returns bool + reason)
 	FText Reason;
-	if (!FPackageName::IsValidLongPackageName(AssetPath, false, &Reason))
+	if (!FPackageName::IsValidLongPackageName(PackagePath, false, &Reason))
 	{
 		OutError = FString::Printf(
 			TEXT("asset_path '%s' is not a valid Unreal package path: %s. Use a path like /Game/UI/WBP_MainMenu"),

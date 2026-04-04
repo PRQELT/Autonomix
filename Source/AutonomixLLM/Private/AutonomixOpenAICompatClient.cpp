@@ -296,18 +296,51 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	CurrentRequest->SetContentAsString(BodyString);
 	const UAutonomixDeveloperSettings* Settings = UAutonomixDeveloperSettings::Get();
 
-	// Local model inference on consumer GPUs can take 60-180+ seconds for
-	// large prompts. The default 120s timeout is too short — use 300s minimum.
-	// Roo Code native-ollama.ts: "The ollama npm package handles timeouts internally"
-	// (i.e. no explicit short timeout). Cloud providers keep the user's configured timeout.
+	// =========================================================================
+	// TIMEOUT CONFIGURATION
+	//
+	// Local model inference on consumer GPUs can take 60-600+ seconds for
+	// large prompts. The default 120s timeout is far too short for Ollama/LMStudio.
+	// Users with 8B+ models on consumer GPUs (3060, 3090) regularly see 120-300s+
+	// inference times, especially with Autonomix's large system prompt + tools.
+	//
+	// FIX (GitHub Issues #15, #16, #18): Users report "Could not connect to Ollama"
+	// which is actually a timeout — the inference simply takes too long.
+	//
+	// SetTimeout() = total request timeout (CURLOPT_TIMEOUT)
+	// SetActivityTimeout() = max seconds with 0 bytes received (CURLOPT_LOW_SPEED_TIME)
+	//
+	// For NON-STREAMING local requests (Ollama sends the entire response at once),
+	// the server sends ZERO bytes during inference, so the activity timeout fires
+	// even though the server is happily computing. We must disable it (set to 0)
+	// for non-streaming local requests.
+	// =========================================================================
 	float TimeoutSec = (float)(Settings ? Settings->RequestTimeoutSeconds : 120);
-	if (bIsLocalProvider && TimeoutSec < 300.0f)
+	if (bIsLocalProvider)
 	{
-		TimeoutSec = 300.0f;
-		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Local provider timeout increased to 300s."));
+		// Enforce minimum 600s for local providers — inference can be very slow
+		if (TimeoutSec < 600.0f)
+		{
+			TimeoutSec = 600.0f;
+		}
+		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Local provider total timeout = %.0fs."), TimeoutSec);
 	}
 	CurrentRequest->SetTimeout(TimeoutSec);
-	CurrentRequest->SetActivityTimeout(TimeoutSec);
+
+	// Activity timeout: for non-streaming local providers, DISABLE it entirely.
+	// Ollama's /v1/chat/completions with stream:false sends 0 bytes during inference,
+	// then sends the complete response all at once. Any activity timeout would kill
+	// the request prematurely during the computation phase.
+	if (bIsLocalProvider && !bStreamingEnabled)
+	{
+		// SetActivityTimeout(0) disables the low-speed check (CURLOPT_LOW_SPEED_TIME=0)
+		CurrentRequest->SetActivityTimeout(0.0f);
+		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: Activity timeout disabled for non-streaming local provider."));
+	}
+	else
+	{
+		CurrentRequest->SetActivityTimeout(TimeoutSec);
+	}
 
 	CurrentMessageId = FGuid::NewGuid();
 	CurrentAssistantContent.Empty();
@@ -330,7 +363,25 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	else
 	{
 		bRequestInFlight = false;
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(GetProviderDisplayName(Provider)));
+		const FString ProvName = GetProviderDisplayName(Provider);
+		FAutonomixHTTPError Err;
+		Err.Type = EAutonomixHTTPErrorType::NetworkError;
+		if (bIsLocalProvider)
+		{
+			Err.UserFriendlyMessage = FString::Printf(
+				TEXT("Failed to start %s request. Could not connect to %s.\n\n")
+				TEXT("Troubleshooting:\n")
+				TEXT("  \u2022 Is %s running? Visit your Base URL in a browser to check.\n")
+				TEXT("  \u2022 Check Base URL in Project Settings > Autonomix > API | %s\n")
+				TEXT("  \u2022 For remote servers (not localhost), check firewall/network rules"),
+				*ProvName, *ProvName, *ProvName, *ProvName);
+		}
+		else
+		{
+			Err.UserFriendlyMessage = FString::Printf(
+				TEXT("Could not connect to %s. Check your internet connection and API endpoint."), *ProvName);
+		}
+		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 	}
 }
@@ -1432,7 +1483,80 @@ void FAutonomixOpenAICompatClient::HandleRequestComplete(
 
 	if (!bConnected || !Response.IsValid())
 	{
-		ErrorReceivedDelegate.Broadcast(FAutonomixHTTPError::ConnectionFailed(GetProviderDisplayName(Provider)));
+		// =====================================================================
+		// FIX (GitHub Issues #15, #16, #18): Distinguish TIMEOUT from CONNECTION FAILURE.
+		//
+		// UE5's HTTP module passes bConnected=false for BOTH genuine connection
+		// failures AND request timeouts. Users see "Could not connect to Ollama.
+		// Check your internet connection." when the real problem is the model
+		// inference exceeded the timeout — completely misleading.
+		//
+		// Detection: if elapsed time >= 90% of configured timeout, it's a timeout.
+		// Otherwise, it's a genuine connection failure.
+		// =====================================================================
+		const float ElapsedSec = Request.IsValid() ? Request->GetElapsedTime() : 0.0f;
+		const UAutonomixDeveloperSettings* TimeoutSettings = UAutonomixDeveloperSettings::Get();
+		float ConfiguredTimeout = (float)(TimeoutSettings ? TimeoutSettings->RequestTimeoutSeconds : 120);
+		const bool bIsLocal = (Provider == EAutonomixProvider::Ollama ||
+		                       Provider == EAutonomixProvider::LMStudio);
+		if (bIsLocal && ConfiguredTimeout < 600.0f) ConfiguredTimeout = 600.0f;
+
+		const bool bLikelyTimeout = (ElapsedSec > ConfiguredTimeout * 0.85f);
+		const FString ProviderName = GetProviderDisplayName(Provider);
+
+		UE_LOG(LogAutonomix, Warning,
+			TEXT("OpenAICompatClient: Request failed — bConnected=%d elapsed=%.1fs timeout=%.1fs likely_timeout=%d provider=%s"),
+			bConnected ? 1 : 0, ElapsedSec, ConfiguredTimeout, bLikelyTimeout ? 1 : 0, *ProviderName);
+
+		FAutonomixHTTPError Err;
+		if (bLikelyTimeout)
+		{
+			Err.Type = EAutonomixHTTPErrorType::Timeout;
+			if (bIsLocal)
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("%s request timed out after %.0f seconds.\n\n")
+					TEXT("This usually means the model is taking too long to generate a response.\n\n")
+					TEXT("Try:\n")
+					TEXT("  \u2022 Increase 'Request Timeout' in Project Settings > Autonomix > Connection (current: %.0fs)\n")
+					TEXT("  \u2022 Use a smaller/faster model (e.g. llama3.1:8b or qwen2.5-coder:7b)\n")
+					TEXT("  \u2022 Reduce 'Ollama Context Size' in settings (current: %d tokens)\n")
+					TEXT("  \u2022 Try a simpler prompt first to verify connectivity"),
+					*ProviderName, ElapsedSec,
+					ConfiguredTimeout,
+					TimeoutSettings ? TimeoutSettings->OllamaContextSize : 32768);
+			}
+			else
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("%s request timed out after %.0f seconds.\n\n")
+					TEXT("Increase 'Request Timeout' in Project Settings > Autonomix > Connection, or retry."),
+					*ProviderName, ElapsedSec);
+			}
+		}
+		else
+		{
+			Err.Type = EAutonomixHTTPErrorType::NetworkError;
+			if (bIsLocal)
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("Could not connect to %s.\n\n")
+					TEXT("Troubleshooting:\n")
+					TEXT("  \u2022 Verify %s is running (visit the Base URL in your browser)\n")
+					TEXT("  \u2022 Check your Base URL in Project Settings > Autonomix > API | %s\n")
+					TEXT("  \u2022 Ensure the model is pulled: ollama pull <model-name>\n")
+					TEXT("  \u2022 For remote servers, check firewall/network access"),
+					*ProviderName, *ProviderName, *ProviderName);
+			}
+			else
+			{
+				Err.UserFriendlyMessage = FString::Printf(
+					TEXT("Could not connect to %s. Check your internet connection and API endpoint."),
+					*ProviderName);
+			}
+		}
+
+		ErrorReceivedDelegate.Broadcast(Err);
 		RequestCompletedDelegate.Broadcast(false);
 		return;
 	}

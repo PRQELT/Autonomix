@@ -58,7 +58,7 @@ UAutonomixDeveloperSettings::UAutonomixDeveloperSettings()
 	// --- Ollama defaults (from Roo Code ollamaDefaultModelId) ---
 	OllamaBaseUrl = TEXT("http://localhost:11434");
 	OllamaModelId = TEXT("devstral:24b");
-	OllamaContextSize = 8192;
+	OllamaContextSize = 32768;
 
 	// --- LM Studio defaults (from Roo Code lMStudioDefaultModelId) ---
 	LMStudioBaseUrl = TEXT("http://localhost:1234");

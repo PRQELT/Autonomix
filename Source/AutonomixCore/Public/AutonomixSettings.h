@@ -280,10 +280,10 @@ public:
 		ToolTip = "The model name exactly as shown by 'ollama list'.\nMust be pulled first via: ollama pull <model>\n\nRecommended for Autonomix:\n  devstral:24b (best coding, 24GB VRAM)\n  qwen2.5-coder:32b (strong coding, 32GB VRAM)\n  llama3.1:8b (fast, 8GB VRAM)"))
 	FString OllamaModelId;
 
-	/** Ollama context window size in tokens. Default: 8192. */
+	/** Ollama context window size in tokens. Default: 32768. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "API|Ollama",
 		meta = (DisplayName = "Ollama Context Size (tokens)", ClampMin = "512", ClampMax = "131072",
-		ToolTip = "Context window size for the Ollama model.\nHigher values use more VRAM but allow longer conversations.\nDefault: 8192. Most models support up to 32768 or 131072."))
+		ToolTip = "Context window size for the Ollama model.\nHigher values use more VRAM but allow longer conversations.\nDefault: 32768. Most models support up to 32768 or 131072.\n\nIMPORTANT: Ollama defaults to 2048 internally if this is not set,\nwhich is far too small for Autonomix. Keep at 32768+ for best results."))
 	int32 OllamaContextSize;
 
 	// ============================================================================
@@ -349,9 +349,12 @@ public:
 		meta = (DisplayName = "Max Response Tokens", ClampMin = "256", ClampMax = "200000"))
 	int32 MaxResponseTokens;
 
-	/** HTTP request timeout in seconds */
+	/** HTTP request timeout in seconds.
+	 *  For local providers (Ollama/LM Studio), the effective minimum is 600s.
+	 *  Increase this if you see timeout errors with large or slow models. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "API|Connection",
-		meta = (DisplayName = "Request Timeout (seconds)", ClampMin = "10", ClampMax = "600"))
+		meta = (DisplayName = "Request Timeout (seconds)", ClampMin = "10", ClampMax = "1800",
+		ToolTip = "Maximum time (in seconds) to wait for an API response.\n\nFor cloud providers (Claude, GPT, Gemini): 120s is usually enough.\nFor local providers (Ollama, LM Studio): the plugin enforces a minimum of 600s\nbecause local model inference can be much slower.\n\nIf you see timeout errors with Ollama, increase this value (up to 1800s = 30min)."))
 	int32 RequestTimeoutSeconds;
 
 	// ============================================================================

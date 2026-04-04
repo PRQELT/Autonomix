@@ -1273,8 +1273,8 @@ void SAutonomixMainPanel::ConfigureClientFromSettings()
     LLMClient->OnMessageComplete().AddLambda([this](const FAutonomixMessage& Message) { if (FAutonomixConversationTabState* Tab = GetActiveTabState()) { if (Tab->ChatSession.IsValid()) Tab->ChatSession->OnMessageComplete(Message); } });
     LLMClient->OnRequestStarted().AddLambda([this]() { if (FAutonomixConversationTabState* Tab = GetActiveTabState()) { if (Tab->ChatSession.IsValid()) Tab->ChatSession->OnRequestStarted(); } });
     LLMClient->OnRequestCompleted().AddLambda([this](bool bSuccess) { if (FAutonomixConversationTabState* Tab = GetActiveTabState()) { if (Tab->ChatSession.IsValid()) Tab->ChatSession->OnRequestCompleted(bSuccess); } });
-    LLMClient->OnErrorReceived().AddSP(this, &SAutonomixMainPanel::OnErrorReceived);
-    LLMClient->OnTokenUsageUpdated().AddSP(this, &SAutonomixMainPanel::OnTokenUsageUpdated);
+    LLMClient->OnErrorReceived().AddLambda([this](const FAutonomixHTTPError& Error) { OnErrorReceived(Error); });
+    LLMClient->OnTokenUsageUpdated().AddLambda([this](const FAutonomixTokenUsage& Usage) { OnTokenUsageUpdated(Usage); });
 
     // Phase 1: Bind context window exceeded delegate (Anthropic-only feature).
     // For non-Anthropic providers, OnContextWindowExceeded is not available —

@@ -1,5 +1,7 @@
 {
-  "category": "meta",
+  "schema_version": "1.0.0",
+  "domain": "discovery_tools",
+  "min_plugin_version": "1.0.0",
   "tools": [
     {
       "name": "get_tool_info",

@@ -115,7 +115,10 @@ void FAutonomixClaudeClient::SendMessageInternal(
 	if (Settings)
 	{
 		CurrentRequest->SetTimeout(Settings->RequestTimeoutSeconds);
-		CurrentRequest->SetActivityTimeout(Settings->RequestTimeoutSeconds);
+		// NOTE: Do NOT set ActivityTimeout for SSE streaming requests. ActivityTimeout
+		// (CURLOPT_LOW_SPEED_TIME) kills connections during natural pauses in SSE data
+		// delivery (model thinking, generating tool JSON), causing premature completion
+		// with empty responses (stop_reason="", 0 tool calls, 0 tokens).
 	}
 
 	CurrentRequest->OnRequestProgress64().BindRaw(this, &FAutonomixClaudeClient::HandleRequestProgress);
@@ -150,6 +153,7 @@ void FAutonomixClaudeClient::CancelRequest()
 		// to prevent the race condition where HandleRequestComplete fires one last time
 		bRequestCancelled = true;
 		CurrentRequest->CancelRequest();
+		CurrentRequest.Reset();
 		bRequestInFlight = false;
 		UE_LOG(LogAutonomix, Log, TEXT("ClaudeClient: Request cancelled by user."));
 		RequestCompletedDelegate.Broadcast(false);
@@ -450,6 +454,14 @@ TArray<TSharedPtr<FJsonValue>> FAutonomixClaudeClient::ConvertMessagesToJson(
 void FAutonomixClaudeClient::HandleRequestProgress(
 	FHttpRequestPtr Request, uint64 BytesSent, uint64 BytesReceived)
 {
+	// Guard against stale callbacks from a previous request (race condition when
+	// the agentic loop starts Request B before Request A's callbacks fully drain)
+	if (Request != CurrentRequest)
+	{
+		UE_LOG(LogAutonomix, Verbose, TEXT("ClaudeClient: Ignoring stale progress callback for previous request."));
+		return;
+	}
+
 	// CRITICAL (Gemini): Check bRequestCancelled FIRST to prevent race condition
 	if (bRequestCancelled || !Request.IsValid()) return;
 
@@ -502,12 +514,21 @@ void FAutonomixClaudeClient::HandleRequestProgress(
 void FAutonomixClaudeClient::HandleRequestComplete(
 	FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
 {
+	// Guard against stale callbacks from a previous request (race condition when
+	// the agentic loop starts Request B before Request A's callbacks fully drain)
+	if (Request != CurrentRequest)
+	{
+		UE_LOG(LogAutonomix, Verbose, TEXT("ClaudeClient: Ignoring stale completion callback for previous request."));
+		return;
+	}
+
 	// CRITICAL (Gemini): First check -- if cancelled, exit cleanly.
 	// CancelRequest() can trigger this delegate one more time.
 	// Do NOT broadcast errors, do NOT trigger retry pipeline.
 	if (bRequestCancelled)
 	{
 		bRequestInFlight = false;
+		CurrentRequest.Reset();
 		return;
 	}
 
@@ -633,6 +654,10 @@ void FAutonomixClaudeClient::HandleRequestComplete(
 
 	UE_LOG(LogAutonomix, Log, TEXT("ClaudeClient: Request completed (stop_reason=%s). %d tool calls, %d input tokens, %d output tokens."),
 		*LastStopReason, PendingToolCalls.Num(), LastTokenUsage.InputTokens, LastTokenUsage.OutputTokens);
+
+	// Clear CurrentRequest to avoid holding a stale reference and to ensure
+	// future stale callbacks from this request are properly rejected
+	CurrentRequest.Reset();
 }
 
 void FAutonomixClaudeClient::RetryWithTrimmedHistory(const TArray<FAutonomixMessage>& TrimmedHistory)

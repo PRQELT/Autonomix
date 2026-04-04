@@ -123,11 +123,21 @@ bool FAutonomixCheckpointManager::SaveCheckpoint(
 
 	// Stage all changes
 	FString Output, ErrOutput;
-	RunGitCommand(TEXT("add -A"), Output, ErrOutput);
+	int32 AddResult = RunGitCommand(TEXT("add -A"), Output, ErrOutput);
+	if (AddResult != 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AutonomixCheckpointManager: git add failed (exit %d): %s"), AddResult, *ErrOutput);
+		return false;
+	}
 
 	// Check if there are actually staged changes
-	RunGitCommand(TEXT("diff --cached --quiet"), Output, ErrOutput);
-	// If exit code is 0, nothing staged
+	// git diff --cached --quiet returns 0 if no staged changes, 1 if there are changes
+	int32 DiffResult = RunGitCommand(TEXT("diff --cached --quiet"), Output, ErrOutput);
+	if (DiffResult == 0)
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("AutonomixCheckpointManager: No staged changes for checkpoint '%s' — skipping."), *Description);
+		return false;
+	}
 
 	// Create commit
 	const FString CommitMsg = FString::Printf(
@@ -136,15 +146,17 @@ bool FAutonomixCheckpointManager::SaveCheckpoint(
 		LoopIteration
 	);
 	const FString CommitArg = FString::Printf(TEXT("commit -m \"%s\""), *CommitMsg);
-	if (RunGitCommand(*CommitArg, Output, ErrOutput) != 0)
+	int32 CommitResult = RunGitCommand(CommitArg, Output, ErrOutput);
+	if (CommitResult != 0)
 	{
-		// May fail if nothing to commit — not an error
-		if (ErrOutput.Contains(TEXT("nothing to commit")))
+		// May fail if nothing to commit — not an error (check both Output and ErrOutput since
+		// git may write this message to stdout rather than stderr)
+		if (Output.Contains(TEXT("nothing to commit")) || ErrOutput.Contains(TEXT("nothing to commit")))
 		{
 			UE_LOG(LogTemp, Verbose, TEXT("AutonomixCheckpointManager: Nothing to commit for checkpoint '%s'."), *Description);
 			return false;
 		}
-		UE_LOG(LogTemp, Warning, TEXT("AutonomixCheckpointManager: Commit failed: %s"), *ErrOutput);
+		UE_LOG(LogTemp, Warning, TEXT("AutonomixCheckpointManager: Commit failed (exit %d): %s"), CommitResult, *ErrOutput);
 		return false;
 	}
 
@@ -365,6 +377,24 @@ int32 FAutonomixCheckpointManager::RunGitCommand(
 	FPlatformProcess::GetProcReturnCode(Process, &ReturnCode);
 	FPlatformProcess::ClosePipe(PipeRead, PipeWrite);
 	FPlatformProcess::CloseProc(Process);
+
+	// NOTE: UE's CreateProc only captures stdout via PipeWrite. Git writes errors
+	// to stderr which is NOT captured separately. When the process fails with a
+	// non-zero exit code and ErrOutput is empty, populate it from stdout (which
+	// sometimes contains the error message) or provide a descriptive fallback.
+	if (ReturnCode != 0 && ErrOutput.IsEmpty())
+	{
+		if (!Output.IsEmpty())
+		{
+			ErrOutput = Output.TrimStartAndEnd();
+		}
+		else
+		{
+			ErrOutput = FString::Printf(
+				TEXT("git %s exited with code %d but produced no output (stderr not captured)"),
+				*Args, ReturnCode);
+		}
+	}
 
 	return ReturnCode;
 }
