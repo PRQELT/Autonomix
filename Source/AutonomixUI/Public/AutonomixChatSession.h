@@ -114,6 +114,10 @@ public:
     void SetProcessingState(bool bProcessing) { bIsProcessing = bProcessing; }
     void SetAgenticLoopState(bool bLooping) { bInAgenticLoop = bLooping; }
 
+    /** Stop the agentic loop immediately — clears tool queue, resets flags.
+     *  Called when the user clicks the Stop button. */
+    void StopAgenticLoop();
+
 private:
     // Dependencies
     TSharedPtr<IAutonomixLLMClient> LLMClient;
@@ -130,6 +134,7 @@ private:
     TArray<FAutonomixToolCall> ToolCallQueue;
     bool bInAgenticLoop = false;
     bool bIsProcessing = false;
+    bool bStopRequested = false;  // Set by StopAgenticLoop(), checked during tool execution
     int32 AgenticLoopCount = 0;
     int32 ConsecutiveNoToolCount = 0;
     static const int32 MaxConsecutiveNoToolResponses = 3;

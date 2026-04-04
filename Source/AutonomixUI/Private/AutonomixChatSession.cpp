@@ -87,6 +87,7 @@ void FAutonomixChatSession::ProcessToolCallQueue()
 	}
 
 	bInAgenticLoop = true;
+	bStopRequested = false;
 	AgenticLoopCount++;
 
 	// Record this batch in auto-approval tracking
@@ -99,6 +100,14 @@ void FAutonomixChatSession::ProcessToolCallQueue()
 	ToolCallQueue.Empty();
 	for (const FAutonomixToolCall& ToolCall : ActiveToolCalls)
 	{
+		// Check if stop was requested between tool calls
+		if (bStopRequested)
+		{
+			UE_LOG(LogAutonomix, Log, TEXT("ChatSession: Stop requested — aborting remaining %d tool call(s)."),
+				ActiveToolCalls.Num());
+			break;
+		}
+
 		// Phase 1: Check for tool repetition (identical consecutive calls)
 		if (ToolRepetitionDetector.IsValid())
 		{
@@ -177,17 +186,49 @@ void FAutonomixChatSession::ProcessToolCallQueue()
 	ActiveToolCalls.Empty();
 	OnSaveTabsToDisk.ExecuteIfBound();
 
-	if (!bInAgenticLoop)
+	if (!bInAgenticLoop || bStopRequested)
 	{
-		UE_LOG(LogAutonomix, Log, TEXT("MainPanel: Agentic loop was terminated (attempt_completion). Not continuing."));
+		UE_LOG(LogAutonomix, Log, TEXT("MainPanel: Agentic loop was terminated (%s). Not continuing."),
+			bStopRequested ? TEXT("stop requested") : TEXT("attempt_completion"));
+		bStopRequested = false;
+		bInAgenticLoop = false;
+		bIsProcessing = false;
+		OnStatusUpdated.Broadcast(TEXT(""));
 		return;
 	}
 
 	ContinueAgenticLoop();
 }
 
+void FAutonomixChatSession::StopAgenticLoop()
+{
+	UE_LOG(LogAutonomix, Log, TEXT("ChatSession: StopAgenticLoop() called. bInAgenticLoop=%d, bIsProcessing=%d"),
+		bInAgenticLoop, bIsProcessing);
+	
+	bStopRequested = true;
+	bInAgenticLoop = false;
+	bIsProcessing = false;
+	AgenticLoopCount = 0;
+	ConsecutiveNoToolCount = 0;
+	ToolCallQueue.Empty();
+
+	OnStatusUpdated.Broadcast(TEXT(""));
+	OnAgentFinished.Broadcast(TEXT("Stopped by user."));
+}
+
 void FAutonomixChatSession::ContinueAgenticLoop()
 {
+	// Check stop flag before making a new API call
+	if (bStopRequested)
+	{
+		UE_LOG(LogAutonomix, Log, TEXT("ChatSession: ContinueAgenticLoop() aborted — stop was requested."));
+		bStopRequested = false;
+		bInAgenticLoop = false;
+		bIsProcessing = false;
+		OnStatusUpdated.Broadcast(TEXT(""));
+		return;
+	}
+
 	const UAutonomixDeveloperSettings* Settings = UAutonomixDeveloperSettings::Get();
 	if (!Settings) return;
 

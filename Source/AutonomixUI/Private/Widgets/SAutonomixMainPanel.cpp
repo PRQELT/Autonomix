@@ -1495,9 +1495,22 @@ void SAutonomixMainPanel::OnPromptSubmitted(const FString& PromptText)
 
 FReply SAutonomixMainPanel::OnStopClicked()
 {
+    // Cancel any in-flight HTTP request
     if (LLMClient.IsValid())
     {
         LLMClient->CancelRequest();
+    }
+
+    // CRITICAL: Tell the ChatSession to stop its agentic loop.
+    // Without this, the loop continues even after the HTTP request is cancelled,
+    // because tool execution happens synchronously and ContinueAgenticLoop()
+    // fires a new request after tools complete.
+    if (FAutonomixConversationTabState* ActiveTab = GetActiveTabState())
+    {
+        if (ActiveTab->ChatSession.IsValid())
+        {
+            ActiveTab->ChatSession->StopAgenticLoop();
+        }
     }
 
     bIsProcessing = false;
