@@ -7,6 +7,7 @@
 #include "HAL/PlatformFileManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 FAutonomixToolSchemaRegistry::FAutonomixToolSchemaRegistry()
 {
@@ -130,48 +131,184 @@ bool FAutonomixToolSchemaRegistry::LoadSchemaFile(const FString& FilePath)
 	return false;
 }
 
-/** Maximum characters for a tool description in schemas sent to the LLM.
+/** Maximum characters for a tool's top-level description in schemas sent to the LLM.
  *  Long descriptions waste tokens without improving tool selection.
  *  ~200 chars = ~50 tokens per tool. At 93 tools = ~4,650 tokens for descriptions.
  *  Without truncation: ~35,000 tokens. Savings: ~86%. */
 static constexpr int32 MaxDescriptionChars = 200;
 
-/** Truncate a description string to fit within the token budget */
-static FString TruncateDescription(const FString& Desc)
+/** Maximum characters for individual property descriptions within input_schema.
+ *  Property descriptions like "Component class name (without U prefix): StaticMeshComponent,
+ *  SkeletalMeshComponent, BoxComponent, SphereComponent, CapsuleComponent, ..." are verbose.
+ *  The AI has seen these patterns during training — it doesn't need full enumerations.
+ *  ~80 chars = ~20 tokens per property. Typical tool has 3-8 properties. */
+static constexpr int32 MaxPropertyDescriptionChars = 80;
+
+/** Truncate a description string to fit within the given character budget */
+static FString TruncateDescriptionAt(const FString& Desc, int32 MaxChars)
 {
-	if (Desc.Len() <= MaxDescriptionChars)
+	if (Desc.Len() <= MaxChars)
 	{
 		return Desc;
 	}
 	// Truncate at a word boundary near the limit
-	int32 CutPos = MaxDescriptionChars;
+	int32 CutPos = MaxChars;
 	while (CutPos > 0 && Desc[CutPos] != TEXT(' '))
 	{
 		CutPos--;
 	}
-	if (CutPos == 0) CutPos = MaxDescriptionChars;
+	if (CutPos == 0) CutPos = MaxChars;
 	return Desc.Left(CutPos) + TEXT("...");
 }
 
-/** Create a lightweight clone of a schema with truncated description.
+static FString TruncateDescription(const FString& Desc)
+{
+	return TruncateDescriptionAt(Desc, MaxDescriptionChars);
+}
+
+/**
+ * Recursively truncate description fields within a JSON object (input_schema properties).
+ * Only clones objects that need modification — returns original pointer if no changes needed.
+ */
+static TSharedPtr<FJsonObject> TruncatePropertyDescriptions(const TSharedPtr<FJsonObject>& Obj)
+{
+	if (!Obj.IsValid()) return Obj;
+
+	bool bNeedsClone = false;
+
+	// Check if this object has a "description" field that needs truncation
+	FString Desc;
+	if (Obj->TryGetStringField(TEXT("description"), Desc) && Desc.Len() > MaxPropertyDescriptionChars)
+	{
+		bNeedsClone = true;
+	}
+
+	// Check "properties" sub-object (input_schema.properties.{param}.description)
+	const TSharedPtr<FJsonObject>* PropertiesObj = nullptr;
+	if (Obj->TryGetObjectField(TEXT("properties"), PropertiesObj) && PropertiesObj->IsValid())
+	{
+		for (const auto& PropPair : (*PropertiesObj)->Values)
+		{
+			const TSharedPtr<FJsonObject>* PropObj = nullptr;
+			if (PropPair.Value->TryGetObject(PropObj) && PropObj->IsValid())
+			{
+				FString PropDesc;
+				if ((*PropObj)->TryGetStringField(TEXT("description"), PropDesc) && PropDesc.Len() > MaxPropertyDescriptionChars)
+				{
+					bNeedsClone = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!bNeedsClone) return Obj;
+
+	// Deep clone with truncation
+	TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
+	for (const auto& Pair : Obj->Values)
+	{
+		if (Pair.Key == TEXT("description"))
+		{
+			FString DescValue;
+			if (Pair.Value->TryGetString(DescValue))
+			{
+				Clone->SetStringField(TEXT("description"), TruncateDescriptionAt(DescValue, MaxPropertyDescriptionChars));
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else if (Pair.Key == TEXT("properties"))
+		{
+			const TSharedPtr<FJsonObject>* OrigProps = nullptr;
+			if (Pair.Value->TryGetObject(OrigProps) && OrigProps->IsValid())
+			{
+				TSharedPtr<FJsonObject> ClonedProps = MakeShared<FJsonObject>();
+				for (const auto& PropPair : (*OrigProps)->Values)
+				{
+					const TSharedPtr<FJsonObject>* PropObj = nullptr;
+					if (PropPair.Value->TryGetObject(PropObj) && PropObj->IsValid())
+					{
+						ClonedProps->SetObjectField(PropPair.Key, TruncatePropertyDescriptions(*PropObj));
+					}
+					else
+					{
+						ClonedProps->SetField(PropPair.Key, PropPair.Value);
+					}
+				}
+				Clone->SetObjectField(TEXT("properties"), ClonedProps);
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else if (Pair.Key == TEXT("items"))
+		{
+			// Handle array items (e.g., "components": { "items": { "properties": {...} } })
+			const TSharedPtr<FJsonObject>* ItemsObj = nullptr;
+			if (Pair.Value->TryGetObject(ItemsObj) && ItemsObj->IsValid())
+			{
+				Clone->SetObjectField(TEXT("items"), TruncatePropertyDescriptions(*ItemsObj));
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else
+		{
+			Clone->SetField(Pair.Key, Pair.Value);
+		}
+	}
+	return Clone;
+}
+
+/** Create a lightweight clone of a schema with truncated descriptions.
+ *  Truncates both the top-level description AND nested input_schema property descriptions.
  *  Only clones when truncation is needed — returns original pointer otherwise. */
 static TSharedPtr<FJsonObject> MakeTruncatedSchema(const TSharedPtr<FJsonObject>& Original)
 {
 	if (!Original.IsValid()) return Original;
 
+	bool bNeedsTopLevelTruncation = false;
 	FString Desc;
-	if (!Original->TryGetStringField(TEXT("description"), Desc) || Desc.Len() <= MaxDescriptionChars)
+	if (Original->TryGetStringField(TEXT("description"), Desc) && Desc.Len() > MaxDescriptionChars)
 	{
-		return Original;  // No truncation needed
+		bNeedsTopLevelTruncation = true;
 	}
 
-	// Shallow clone: copy all fields, replace only description
+	// Truncate input_schema property descriptions
+	const TSharedPtr<FJsonObject>* InputSchemaObj = nullptr;
+	TSharedPtr<FJsonObject> TruncatedInputSchema;
+	bool bInputSchemaChanged = false;
+	if (Original->TryGetObjectField(TEXT("input_schema"), InputSchemaObj) && InputSchemaObj->IsValid())
+	{
+		TruncatedInputSchema = TruncatePropertyDescriptions(*InputSchemaObj);
+		bInputSchemaChanged = (TruncatedInputSchema.Get() != InputSchemaObj->Get());
+	}
+
+	if (!bNeedsTopLevelTruncation && !bInputSchemaChanged)
+	{
+		return Original;  // No truncation needed at any level
+	}
+
+	// Clone the top-level schema
 	TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
 	for (const auto& Pair : Original->Values)
 	{
 		Clone->SetField(Pair.Key, Pair.Value);
 	}
-	Clone->SetStringField(TEXT("description"), TruncateDescription(Desc));
+	if (bNeedsTopLevelTruncation)
+	{
+		Clone->SetStringField(TEXT("description"), TruncateDescription(Desc));
+	}
+	if (bInputSchemaChanged && TruncatedInputSchema.IsValid())
+	{
+		Clone->SetObjectField(TEXT("input_schema"), TruncatedInputSchema);
+	}
 	return Clone;
 }
 
@@ -302,6 +439,8 @@ const TArray<FString>& FAutonomixToolSchemaRegistry::GetAlwaysAvailableTools()
 		TEXT("attempt_completion"),
 		TEXT("ask_followup_question"),
 		TEXT("new_task"),
+		TEXT("get_tool_info"),
+		TEXT("list_tools_in_category"),
 	};
 	return Always;
 }
@@ -628,6 +767,230 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEssentialSchema
 
 	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: GetEssentialSchemas() returned %d tools (from %d total)."),
 		Result.Num(), ToolSchemas.Num());
+
+	return Result;
+}
+
+// ============================================================================
+// Phase 3: Two-Tier Tool System — On-Demand Tool Loading
+// ============================================================================
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetTier1Schemas() const
+{
+	// Tier 1: Always-loaded tools (~15 tools, ~1,500 tokens)
+	// These are the core tools the AI needs for basic operation plus
+	// two discovery tools (get_tool_info, list_tools_in_category) to load
+	// domain-specific tools on demand.
+	static const TSet<FString> Tier1ToolNames = {
+		// File operations (core agentic workflow)
+		TEXT("read_file"),
+		TEXT("write_file"),
+		TEXT("apply_diff"),
+		TEXT("list_directory"),
+		TEXT("search_files"),
+
+		// Asset/context queries
+		TEXT("search_assets"),
+		TEXT("get_blueprint_info"),
+
+		// Blueprint basics (most common UE task)
+		TEXT("inject_blueprint_nodes_t3d"),
+		TEXT("connect_blueprint_pins"),
+
+		// Meta-tools (always needed)
+		TEXT("attempt_completion"),
+		TEXT("ask_followup_question"),
+		TEXT("update_todo_list"),
+		TEXT("switch_mode"),
+		TEXT("new_task"),
+
+		// Discovery tools (Phase 3 — on-demand loading)
+		TEXT("get_tool_info"),
+		TEXT("list_tools_in_category"),
+	};
+
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		if (Tier1ToolNames.Contains(Pair.Key))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+
+	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: GetTier1Schemas() returned %d tools (from %d total). ~%d tokens saved vs full set."),
+		Result.Num(), ToolSchemas.Num(), (ToolSchemas.Num() - Result.Num()) * 60);
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::GetToolInfoString(const FString& ToolName) const
+{
+	TSharedPtr<FJsonObject> Schema = GetSchemaByName(ToolName);
+	if (!Schema.IsValid())
+	{
+		// Fuzzy match: try to find tools containing the query
+		TArray<FString> Suggestions;
+		for (const auto& Pair : ToolSchemas)
+		{
+			if (Pair.Key.Contains(ToolName, ESearchCase::IgnoreCase))
+			{
+				Suggestions.Add(Pair.Key);
+			}
+		}
+
+		if (Suggestions.Num() > 0)
+		{
+			FString SuggestionList;
+			for (const FString& S : Suggestions) { SuggestionList += TEXT("  - ") + S + TEXT("\n"); }
+			return FString::Printf(TEXT("Tool '%s' not found. Did you mean:\n%s"), *ToolName, *SuggestionList);
+		}
+		return FString::Printf(TEXT("Tool '%s' not found. Use list_tools_in_category to discover available tools."), *ToolName);
+	}
+
+	// Serialize the full schema (NO truncation — this is the on-demand load)
+	FString SchemaStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SchemaStr);
+	FJsonSerializer::Serialize(Schema.ToSharedRef(), Writer);
+
+	FString Result;
+	Result += FString::Printf(TEXT("=== TOOL SCHEMA: %s ===\n"), *ToolName);
+	Result += SchemaStr;
+
+	// Find related tools in the same category
+	FString ToolPrefix;
+	int32 UnderscoreIdx = INDEX_NONE;
+	if (ToolName.FindLastChar(TEXT('_'), UnderscoreIdx) && UnderscoreIdx > 0)
+	{
+		// Try common prefixes like "blueprint", "material", "animation"
+		for (const FString& Prefix : { TEXT("blueprint"), TEXT("material"), TEXT("mesh"), TEXT("animation"),
+			TEXT("widget"), TEXT("pcg"), TEXT("input"), TEXT("performance"), TEXT("sequencer"),
+			TEXT("gas"), TEXT("behavior"), TEXT("pie"), TEXT("cpp"), TEXT("build"), TEXT("settings") })
+		{
+			if (ToolName.Contains(Prefix, ESearchCase::IgnoreCase))
+			{
+				ToolPrefix = Prefix;
+				break;
+			}
+		}
+	}
+
+	if (!ToolPrefix.IsEmpty())
+	{
+		Result += TEXT("\n\nRelated tools:\n");
+		int32 Count = 0;
+		for (const auto& Pair : ToolSchemas)
+		{
+			if (Pair.Key == ToolName) continue;
+			if (DisabledTools.Contains(Pair.Key)) continue;
+			if (Pair.Key.Contains(ToolPrefix, ESearchCase::IgnoreCase))
+			{
+				FString Desc;
+				Pair.Value->TryGetStringField(TEXT("description"), Desc);
+				// First sentence only
+				int32 DotIdx = INDEX_NONE;
+				if (Desc.FindChar(TEXT('.'), DotIdx)) Desc = Desc.Left(DotIdx + 1);
+				Result += FString::Printf(TEXT("  - %s: %s\n"), *Pair.Key, *Desc);
+				if (++Count >= 10) break;
+			}
+		}
+	}
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::ListToolsInCategoryString(const FString& Category) const
+{
+	// Map user-friendly category names to tool name patterns
+	static const TMap<FString, TArray<FString>> CategoryPatterns = {
+		{ TEXT("blueprint"),   { TEXT("blueprint"), TEXT("inject"), TEXT("connect_blueprint"), TEXT("compile_blueprint") } },
+		{ TEXT("cpp"),         { TEXT("cpp"), TEXT("create_cpp"), TEXT("modify_cpp"), TEXT("trigger_compile"), TEXT("regenerate") } },
+		{ TEXT("material"),    { TEXT("material") } },
+		{ TEXT("mesh"),        { TEXT("mesh"), TEXT("import_mesh"), TEXT("import_assets"), TEXT("configure_static") } },
+		{ TEXT("animation"),   { TEXT("anim") } },
+		{ TEXT("widget"),      { TEXT("widget") } },
+		{ TEXT("pcg"),         { TEXT("pcg") } },
+		{ TEXT("input"),       { TEXT("input") } },
+		{ TEXT("performance"), { TEXT("perf"), TEXT("cvar"), TEXT("scalability"), TEXT("renderer"), TEXT("csv_profiler"), TEXT("profiling"), TEXT("console") } },
+		{ TEXT("level"),       { TEXT("spawn"), TEXT("place_light"), TEXT("modify_world") } },
+		{ TEXT("build"),       { TEXT("build_lighting"), TEXT("package_project") } },
+		{ TEXT("settings"),    { TEXT("config"), TEXT("read_config"), TEXT("write_config") } },
+		{ TEXT("context"),     { TEXT("list_directory"), TEXT("search_assets"), TEXT("read_file"), TEXT("search_files") } },
+		{ TEXT("source_control"), { TEXT("source_control") } },
+		{ TEXT("sequencer"),   { TEXT("sequencer"), TEXT("level_sequence") } },
+		{ TEXT("gas"),         { TEXT("gas_") } },
+		{ TEXT("behavior"),    { TEXT("behavior"), TEXT("blackboard"), TEXT("navmesh") } },
+		{ TEXT("pie"),         { TEXT("pie"), TEXT("simulate_input") } },
+		{ TEXT("data"),        { TEXT("data_table"), TEXT("datatable"), TEXT("import_json") } },
+		{ TEXT("diagnostics"), { TEXT("message_log"), TEXT("read_message") } },
+		{ TEXT("validation"),  { TEXT("validate"), TEXT("automation_test") } },
+		{ TEXT("python"),      { TEXT("python") } },
+		{ TEXT("viewport"),    { TEXT("viewport"), TEXT("capture") } },
+	};
+
+	FString CategoryLower = Category.ToLower();
+	const TArray<FString>* Patterns = CategoryPatterns.Find(CategoryLower);
+
+	if (!Patterns)
+	{
+		// List all available categories
+		FString CatList;
+		for (const auto& Pair : CategoryPatterns)
+		{
+			CatList += TEXT("  - ") + Pair.Key + TEXT("\n");
+		}
+		return FString::Printf(TEXT("Category '%s' not recognized. Available categories:\n%s"), *Category, *CatList);
+	}
+
+	FString Result = FString::Printf(TEXT("=== TOOLS IN CATEGORY: %s ===\n"), *Category);
+
+	int32 Count = 0;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		bool bMatch = false;
+		for (const FString& Pattern : *Patterns)
+		{
+			if (Pair.Key.Contains(Pattern, ESearchCase::IgnoreCase))
+			{
+				bMatch = true;
+				break;
+			}
+		}
+
+		if (bMatch)
+		{
+			FString Desc;
+			Pair.Value->TryGetStringField(TEXT("description"), Desc);
+			// First two sentences
+			int32 DotCount = 0;
+			int32 CutPos = Desc.Len();
+			for (int32 i = 0; i < Desc.Len(); ++i)
+			{
+				if (Desc[i] == TEXT('.'))
+				{
+					DotCount++;
+					if (DotCount >= 2) { CutPos = i + 1; break; }
+				}
+			}
+			Desc = Desc.Left(CutPos);
+
+			Result += FString::Printf(TEXT("  • %s — %s\n"), *Pair.Key, *Desc);
+			Count++;
+		}
+	}
+
+	if (Count == 0)
+	{
+		Result += TEXT("  (no tools found in this category)\n");
+	}
+	else
+	{
+		Result += FString::Printf(TEXT("\n%d tools found. Use get_tool_info(tool_name) to load the full schema for any tool.\n"), Count);
+	}
 
 	return Result;
 }

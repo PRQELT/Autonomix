@@ -205,9 +205,10 @@ void FAutonomixChatSession::ContinueAgenticLoop()
 	TArray<TSharedPtr<FJsonObject>> ToolSchemas;
 	if (ToolSchemaRegistry.IsValid())
 	{
+		// Phase 3: Two-tier tool loading — Tier 1 for cloud, essential for local
 		ToolSchemas = bIsLocalLoop
 			? ToolSchemaRegistry->GetEssentialSchemas()
-			: ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode);
+			: ToolSchemaRegistry->GetTier1Schemas();
 	}
 
 	// Use GetEffectiveHistory() -- respects condense/truncation tags
@@ -307,6 +308,39 @@ FString FAutonomixChatSession::ExecuteToolCall(const FAutonomixToolCall& ToolCal
 	if (ToolCall.ToolName == TEXT("skill"))
 	{
 		return TEXT("");
+	}
+
+	// ---- Discovery Meta-tools: get_tool_info / list_tools_in_category (Phase 3 token optimization) ----
+	if (ToolCall.ToolName == TEXT("get_tool_info"))
+	{
+		if (ToolSchemaRegistry.IsValid() && ToolCall.InputParams.IsValid())
+		{
+			FString RequestedTool;
+			ToolCall.InputParams->TryGetStringField(TEXT("tool_name"), RequestedTool);
+			if (RequestedTool.IsEmpty())
+			{
+				bOutIsError = true;
+				return TEXT("Error: 'tool_name' parameter is required. Example: get_tool_info({\"tool_name\": \"create_material\"})");
+			}
+			return ToolSchemaRegistry->GetToolInfoString(RequestedTool);
+		}
+		return TEXT("Error: ToolSchemaRegistry not available.");
+	}
+
+	if (ToolCall.ToolName == TEXT("list_tools_in_category"))
+	{
+		if (ToolSchemaRegistry.IsValid() && ToolCall.InputParams.IsValid())
+		{
+			FString Category;
+			ToolCall.InputParams->TryGetStringField(TEXT("category"), Category);
+			if (Category.IsEmpty())
+			{
+				bOutIsError = true;
+				return TEXT("Error: 'category' parameter is required. Example: list_tools_in_category({\"category\": \"material\"})");
+			}
+			return ToolSchemaRegistry->ListToolsInCategoryString(Category);
+		}
+		return TEXT("Error: ToolSchemaRegistry not available.");
 	}
 
 	// Check security mode

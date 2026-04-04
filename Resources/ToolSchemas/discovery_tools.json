@@ -1,0 +1,33 @@
+{
+  "category": "meta",
+  "tools": [
+    {
+      "name": "get_tool_info",
+      "description": "Load the full schema for a specific tool. Use when you need a domain tool not in your current set. Returns the complete input_schema with all parameters, plus related tools in the same category.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "description": "Exact tool name (e.g. 'create_material', 'add_blueprint_variable')"
+          }
+        },
+        "required": ["tool_name"]
+      }
+    },
+    {
+      "name": "list_tools_in_category",
+      "description": "List all available tools in a category with brief descriptions. Categories: blueprint, cpp, material, mesh, animation, widget, pcg, input, performance, level, build, settings, context, source_control, sequencer, gas, behavior, pie, data, diagnostics, validation, python, viewport.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Category name (e.g. 'material', 'animation', 'widget', 'performance')"
+          }
+        },
+        "required": ["category"]
+      }
+    }
+  ]
+}

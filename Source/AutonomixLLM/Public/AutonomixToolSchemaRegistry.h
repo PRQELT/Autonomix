@@ -94,6 +94,41 @@ public:
 	TArray<TSharedPtr<FJsonObject>> GetEssentialSchemas() const;
 
 	/**
+	 * Get Tier 1 (always-loaded) tool schemas for the two-tier tool system.
+	 *
+	 * Phase 3 token optimization: instead of sending 40-90 tool schemas on every call,
+	 * send only ~15 core tools plus two meta-tools (get_tool_info, list_tools_in_category).
+	 * The AI uses meta-tools to discover and load domain-specific tools on demand.
+	 *
+	 * Tier 1 includes:
+	 *   - File operations: read_file, write_file, apply_diff, list_directory, search_files
+	 *   - Context: search_assets, get_blueprint_info
+	 *   - Meta: attempt_completion, ask_followup_question, update_todo_list, switch_mode, new_task
+	 *   - Discovery: get_tool_info, list_tools_in_category
+	 *
+	 * Token cost: ~1,500 tokens (vs ~5,000-8,000 for full mode-filtered set)
+	 */
+	TArray<TSharedPtr<FJsonObject>> GetTier1Schemas() const;
+
+	/**
+	 * Get a detailed description of a specific tool for on-demand loading.
+	 * Returns the full tool schema (name, description, input_schema) as formatted text
+	 * plus a brief list of 5-10 related tools in the same category.
+	 *
+	 * @param ToolName  The tool name to look up
+	 * @return Formatted string with full schema + related tools, or error message
+	 */
+	FString GetToolInfoString(const FString& ToolName) const;
+
+	/**
+	 * List all tools in a given category with brief descriptions.
+	 *
+	 * @param Category  Category to list (e.g. "blueprint", "material", "animation", "widget", etc.)
+	 * @return Formatted string with tool names and first-line descriptions
+	 */
+	FString ListToolsInCategoryString(const FString& Category) const;
+
+	/**
 	 * Get the set of tool categories allowed in a given mode.
 	 * Used to pre-filter tool execution in the ActionRouter.
 	 */

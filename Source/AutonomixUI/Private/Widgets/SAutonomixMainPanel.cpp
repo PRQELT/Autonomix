@@ -1453,7 +1453,11 @@ void SAutonomixMainPanel::OnPromptSubmitted(const FString& PromptText)
     // Build system prompt and send using effective history (condense/truncate aware)
     FString SystemPrompt = BuildSystemPrompt();
 
-    // Phase 2: Use mode-filtered schemas
+    // Phase 3: Two-tier tool loading — send only Tier 1 (core + discovery tools)
+    // for cloud providers. The AI uses get_tool_info / list_tools_in_category to
+    // load domain-specific tool schemas on demand. This reduces tool schema overhead
+    // from ~5-8K to ~1.5K tokens per call.
+    // Local providers still use the essential set (even smaller, no discovery tools).
     const UAutonomixDeveloperSettings* ProviderSettings = UAutonomixDeveloperSettings::Get();
     const bool bIsLocalProvider = ProviderSettings &&
         (ProviderSettings->ActiveProvider == EAutonomixProvider::Ollama ||
@@ -1464,7 +1468,7 @@ void SAutonomixMainPanel::OnPromptSubmitted(const FString& PromptText)
     {
         ToolSchemas = bIsLocalProvider
             ? ToolSchemaRegistry->GetEssentialSchemas()
-            : ToolSchemaRegistry->GetSchemasForMode(CurrentAgentMode);
+            : ToolSchemaRegistry->GetTier1Schemas();
     }
 
     // Phase 4: Inject MCP tool schemas if available
@@ -1766,34 +1770,46 @@ FString SAutonomixMainPanel::BuildSystemPrompt() const
     }
 
     // ---- Assemble final system prompt ----
-    // Structure mirrors Roo Code: roleDefinition + toolUse + guidelines + capabilities + rules + objective
+    // PROMPT CACHING OPTIMIZATION (Phase 2A):
+    // Static content comes FIRST to maximize the cacheable prefix for Anthropic prompt caching.
+    // A separator marker (AUTONOMIX_DYNAMIC_SECTION) is inserted between static and dynamic content.
+    // The Claude client splits on this marker and sends two system blocks:
+    //   Block 1 (static, ~7K tokens): cache_control: ephemeral → 90% cache hit rate
+    //   Block 2 (dynamic, ~2-3K tokens): always re-processed (project context, recent actions)
+    // Other providers ignore the marker and send the full prompt as a single string.
+
+    // ---- STATIC PREFIX (cacheable — identical across agentic loop iterations) ----
     FString SystemPrompt = RoleDefinition;
     SystemPrompt += TEXT("\n\n") + ToolUseSection;
     SystemPrompt += TEXT("\n\n") + ToolUseGuidelinesSection;
-    if (!ProjectContext.IsEmpty()) SystemPrompt += TEXT("\n\n====\n\nPROJECT CONTEXT\n\n") + ProjectContext;
-    if (!SecurityInfo.IsEmpty()) SystemPrompt += TEXT("\n\n") + SecurityInfo;
-    if (!RecentActions.IsEmpty()) SystemPrompt += TEXT("\n\n") + RecentActions;
-
-    // Inject folded code structure context if available
-    // (Roo Code's foldedFileContext.ts pattern — code signatures survive condensation)
-    if (!CachedCodeStructureContext.IsEmpty())
-    {
-        SystemPrompt += TEXT("\n\n====\n\nCODE STRUCTURE (signatures only)\n\n");
-        SystemPrompt += CachedCodeStructureContext;
-    }
-
     SystemPrompt += TEXT("\n\n") + RulesSection;
     SystemPrompt += TEXT("\n\n") + ObjectiveSection;
 
-    // Load any user-provided custom system prompt template (appended, not replaced)
+    // Load any user-provided custom system prompt template (static per session)
     FString CustomPrompt;
     FString TemplatePath = FPaths::Combine(
         FPaths::ProjectPluginsDir(), TEXT("Autonomix"),
         TEXT("Resources"), TEXT("SystemPrompt"), TEXT("autonomix_system_prompt.txt"));
     if (FFileHelper::LoadFileToString(CustomPrompt, *TemplatePath) && !CustomPrompt.IsEmpty())
     {
+        // Replace {PROJECT_CONTEXT} placeholder — use empty string here since project context is in the dynamic section
         CustomPrompt = CustomPrompt.Replace(TEXT("{PROJECT_CONTEXT}"), *ProjectContext);
         SystemPrompt += TEXT("\n\n====\n\nCUSTOM INSTRUCTIONS\n\n") + CustomPrompt;
+    }
+
+    // ---- SEPARATOR: marks boundary between cacheable static prefix and dynamic suffix ----
+    SystemPrompt += TEXT("\n\n===AUTONOMIX_DYNAMIC_SECTION===\n\n");
+
+    // ---- DYNAMIC SUFFIX (changes per call — project state, recent actions) ----
+    if (!SecurityInfo.IsEmpty()) SystemPrompt += SecurityInfo + TEXT("\n\n");
+    if (!ProjectContext.IsEmpty()) SystemPrompt += TEXT("====\n\nPROJECT CONTEXT\n\n") + ProjectContext;
+    if (!RecentActions.IsEmpty()) SystemPrompt += TEXT("\n\n") + RecentActions;
+
+    // Inject folded code structure context if available
+    if (!CachedCodeStructureContext.IsEmpty())
+    {
+        SystemPrompt += TEXT("\n\n====\n\nCODE STRUCTURE (signatures only)\n\n");
+        SystemPrompt += CachedCodeStructureContext;
     }
 
     return SystemPrompt;

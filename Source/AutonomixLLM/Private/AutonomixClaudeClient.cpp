@@ -182,9 +182,63 @@ TSharedPtr<FJsonObject> FAutonomixClaudeClient::BuildRequestBody(
 	Body->SetNumberField(TEXT("max_tokens"), MaxTokens);
 	Body->SetBoolField(TEXT("stream"), true);
 
+	// System prompt: use structured array format with cache_control for Anthropic prompt caching.
+	//
+	// BuildSystemPrompt() inserts a ===AUTONOMIX_DYNAMIC_SECTION=== marker between:
+	//   Block 1 (STATIC): role definition + tool use rules + guidelines + custom instructions
+	//   Block 2 (DYNAMIC): project context + security info + recent actions + code structure
+	//
+	// Only Block 1 gets cache_control: "ephemeral" — Anthropic caches the KV pairs for
+	// the prefix and charges 10% on cache hits. The static block (~7K tokens) is identical
+	// across agentic loop iterations, so after the first call it's cached for 5 minutes.
+	// This saves ~90% on ~7K tokens = ~6.3K free tokens per iteration.
 	if (!SystemPrompt.IsEmpty())
 	{
-		Body->SetStringField(TEXT("system"), SystemPrompt);
+		static const FString DynamicMarker = TEXT("\n\n===AUTONOMIX_DYNAMIC_SECTION===\n\n");
+
+		TArray<TSharedPtr<FJsonValue>> SystemArray;
+		int32 SplitIdx = SystemPrompt.Find(DynamicMarker);
+
+		if (SplitIdx != INDEX_NONE)
+		{
+			// Split into static prefix (cacheable) + dynamic suffix (always re-processed)
+			FString StaticPrefix = SystemPrompt.Left(SplitIdx);
+			FString DynamicSuffix = SystemPrompt.Mid(SplitIdx + DynamicMarker.Len());
+
+			// Block 1: Static prefix with cache_control
+			TSharedPtr<FJsonObject> StaticBlock = MakeShared<FJsonObject>();
+			StaticBlock->SetStringField(TEXT("type"), TEXT("text"));
+			StaticBlock->SetStringField(TEXT("text"), StaticPrefix);
+			TSharedPtr<FJsonObject> CacheControl = MakeShared<FJsonObject>();
+			CacheControl->SetStringField(TEXT("type"), TEXT("ephemeral"));
+			StaticBlock->SetObjectField(TEXT("cache_control"), CacheControl);
+			SystemArray.Add(MakeShared<FJsonValueObject>(StaticBlock));
+
+			// Block 2: Dynamic suffix (no cache_control — changes each call)
+			if (!DynamicSuffix.IsEmpty())
+			{
+				TSharedPtr<FJsonObject> DynamicBlock = MakeShared<FJsonObject>();
+				DynamicBlock->SetStringField(TEXT("type"), TEXT("text"));
+				DynamicBlock->SetStringField(TEXT("text"), DynamicSuffix);
+				SystemArray.Add(MakeShared<FJsonValueObject>(DynamicBlock));
+			}
+
+			UE_LOG(LogAutonomix, Log, TEXT("ClaudeClient: System prompt split for caching — static: %d chars, dynamic: %d chars"),
+				StaticPrefix.Len(), DynamicSuffix.Len());
+		}
+		else
+		{
+			// No marker found — send as single block with cache_control
+			TSharedPtr<FJsonObject> SystemBlock = MakeShared<FJsonObject>();
+			SystemBlock->SetStringField(TEXT("type"), TEXT("text"));
+			SystemBlock->SetStringField(TEXT("text"), SystemPrompt);
+			TSharedPtr<FJsonObject> CacheControl = MakeShared<FJsonObject>();
+			CacheControl->SetStringField(TEXT("type"), TEXT("ephemeral"));
+			SystemBlock->SetObjectField(TEXT("cache_control"), CacheControl);
+			SystemArray.Add(MakeShared<FJsonValueObject>(SystemBlock));
+		}
+
+		Body->SetArrayField(TEXT("system"), SystemArray);
 	}
 
 	// Extended Thinking -- with validated constraints

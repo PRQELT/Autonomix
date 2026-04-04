@@ -45,7 +45,13 @@ Think of it as **Cursor/Roo Code, but for Unreal Engine** — with deep engine i
 - **T3D Pre-Flight Validation Sandbox** — Before applying Blueprint changes, the AI dry-runs node class references and function names against Unreal's Reflection system. Pin type mismatches are caught and warned before injection.
 - **Auto-Layout Graph Formatting** — All T3D-injected Blueprints are automatically passed through a Sugiyama-style DAG layout algorithm, ensuring generated node graphs are beautifully organized and instantly human-readable.
 - **Python API "Escape Hatch"** — For complex bulk operations, the AI can autonomously write and execute native Unreal Python scripts, granting it instant access to the entire UE Editor Utility and Asset Management API.
-- **Token Optimization Engine** — Compact connection verification reports replace verbose T3D readbacks (3,000-8,000 tokens → 200-500 tokens per injection). Old tool results in conversation history are automatically evicted once processed. These optimizations reduce per-task token usage by **60-80%**, making complex Blueprint tasks feasible on all providers.
+- **Token Optimization Engine** — A multi-layered token reduction system:
+  - *Compact Connection Reports* — Replace verbose T3D readbacks (3K-8K tokens → 200-500 tokens per injection)
+  - *Tool Result Eviction* — Old tool results auto-summarized once the AI processes them
+  - *Prompt Caching* — System prompt split into static (cacheable) + dynamic blocks for 90% cache hit rate on Anthropic
+  - *Schema Compression* — Property descriptions truncated to 80 chars (the AI has seen these patterns during training)
+  - *Two-Tier Tool Loading* — Only ~15 core tools sent per call; 70+ domain tools loaded on-demand via `get_tool_info` / `list_tools_in_category` meta-tools
+  - Combined: **80-90% reduction** in per-task token usage, making complex Blueprint tasks feasible on all providers.
 
 ---
 
@@ -78,6 +84,9 @@ Think of it as **Cursor/Roo Code, but for Unreal Engine** — with deep engine i
 - **Sliding-Window Truncation** — When condensation isn't enough, non-destructive truncation tags oldest messages (preserving them for rewind) while keeping API payloads within limits.
 - **Tool Result Eviction** — Old tool results (>2000 chars) that the AI has already processed are automatically replaced with compact summaries in the effective history, preventing conversation bloat during long agentic sessions.
 - **Compact Blueprint Readbacks** — `get_blueprint_info`, `inject_blueprint_nodes_t3d`, and `verify_blueprint_connections` return compact connection reports (exec chain, data connections, pin values, disconnected pins) instead of raw T3D exports, saving 80-90% tokens per call.
+- **Prompt Caching** — System prompt is split into a static prefix (role + rules + guidelines, ~7K tokens) with `cache_control: ephemeral` and a dynamic suffix (project context, recent actions). Anthropic caches the static prefix at 90% discount after the first call.
+- **Two-Tier Tool Loading** — Instead of sending 40-90 tool schemas on every call (~5-8K tokens), only ~15 core tools are sent. The AI discovers domain-specific tools on demand via `get_tool_info` and `list_tools_in_category` meta-tools. Schema overhead drops to ~1.5K tokens.
+- **Schema Compression** — Property descriptions in `input_schema` are truncated to 80 characters. The AI has seen these parameter patterns during training and doesn't need full enumerations on every call.
 - **Orphan Tool Result Validation** — Multi-pass validator ensures all `tool_result` blocks reference valid `tool_use` IDs before every API call, preventing HTTP 400 errors after context truncation.
 - **Per-Message Environment Details** — Each message includes fresh project context (file tree, active level, selected actors, context window stats) so the AI always has current state.
 - **Token Budget Management** — Configurable context token budget (default 30K) prevents project context from consuming the entire window on large projects.
@@ -321,6 +330,13 @@ Regex-powered file content search with 2-line context before/after each match. F
 | Tool | Description |
 |------|-------------|
 | `update_todo_list` | Maintain a step-by-step task checklist with pending/in-progress/completed status |
+
+### 🔍 Tool Discovery Tools (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `get_tool_info` | Load the full schema for a specific tool on demand — returns complete parameters + related tools |
+| `list_tools_in_category` | List all tools in a category (blueprint, material, animation, widget, etc.) with brief descriptions |
 
 ---
 
