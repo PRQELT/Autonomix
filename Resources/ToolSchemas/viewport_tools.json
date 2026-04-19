@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "viewport_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "capture_viewport",
+      "description": "Capture a screenshot of the active editor viewport and return it as a Base64-encoded PNG image. This gives you 'eyes' to visually inspect the current state of the level, check lighting, verify actor placement, inspect UMG widget layouts, and identify visual issues. The image is automatically resized to control token usage. This is a read-only operation. Best used with vision-capable models (Claude Opus/Sonnet, GPT-4o, Gemini Pro).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "max_dimension": {
+            "type": "integer",
+            "description": "Maximum width or height in pixels (256-2048, default 1024). Larger = more detail but more tokens."
+          },
+          "viewport_index": {
+            "type": "integer",
+            "description": "Which viewport to capture if multiple are open (default 0 = primary viewport)"
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

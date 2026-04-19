@@ -1,0 +1,165 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "gas_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "gas_register_tags",
+      "description": "Register gameplay tags in DefaultGameplayTags.ini. Tags become immediately available without editor restart. MUST be called FIRST before any other GAS tool that references tags. Tags use dot-separated hierarchy: 'Ability.Melee.Slash', 'Cooldown.Ability.Fireball', 'GameplayCue.Character.Fire'.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "description": "Array of tag definitions to register",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tag": { "type": "string", "description": "Full tag name (e.g., 'Ability.Melee.Slash')" },
+                "comment": { "type": "string", "description": "Description of what this tag is used for" }
+              },
+              "required": ["tag"]
+            }
+          }
+        },
+        "required": ["tags"]
+      }
+    },
+    {
+      "name": "gas_create_attribute_set",
+      "description": "Generate a C++ UAttributeSet subclass with FGameplayAttributeData properties, ATTRIBUTE_ACCESSORS macros, and replication boilerplate. Creates .h and .cpp files in the Source directory. A compile (trigger_compile) is REQUIRED after this tool before the AttributeSet can be used by other GAS tools. IMPORTANT: Never use Blueprint AttributeSets — they lack the macro expansion needed for stable FGameplayAttribute pin serialization.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "Name for the AttributeSet class (e.g., 'UHealthAttributeSet' or 'HealthAttributeSet')"
+          },
+          "attributes": {
+            "type": "array",
+            "description": "Array of gameplay attributes to include",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Attribute name (e.g., 'Health', 'MaxHealth', 'Mana', 'Damage')" },
+                "replicated": { "type": "boolean", "description": "Whether this attribute replicates to clients (default: true)" }
+              },
+              "required": ["name"]
+            }
+          },
+          "source_directory": {
+            "type": "string",
+            "description": "Subdirectory under Source/ (default: project name)"
+          },
+          "module_name": {
+            "type": "string",
+            "description": "API export macro (default: PROJECTNAME_API)"
+          }
+        },
+        "required": ["class_name", "attributes"]
+      }
+    },
+    {
+      "name": "gas_setup_asc",
+      "description": "Add a UAbilitySystemComponent to a Blueprint actor via the Simple Construction Script. For player characters, the ASC should live on PlayerState (persists across respawns). For NPCs, attach it directly to the Character. This tool adds the component; the AI must follow up with C++ code for IAbilitySystemInterface implementation and InitAbilityActorInfo calls.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to add ASC to (e.g., '/Game/Characters/BP_PlayerCharacter')"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "gas_create_effect",
+      "description": "Create a UGameplayEffect Blueprint asset. Handles the UE 5.3+ paradigm shift: tag grants are routed through UGameplayEffectComponent subclasses (UTargetTagsGameplayEffectComponent, UAssetTagsGameplayEffectComponent) instead of deprecated flat properties. Supports Instant, HasDuration, and Infinite effects with modifiers, tags, and gameplay cues.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path (e.g., '/Game/GAS/Effects/GE_Damage')"
+          },
+          "duration_policy": {
+            "type": "string",
+            "enum": ["Instant", "HasDuration", "Infinite"],
+            "description": "Effect duration type"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "description": "Duration in seconds (only for HasDuration)"
+          },
+          "modifiers": {
+            "type": "array",
+            "description": "Attribute modifiers",
+            "items": {
+              "type": "object",
+              "properties": {
+                "attribute": { "type": "string", "description": "Attribute to modify (e.g., 'UHealthAttributeSet.Health')" },
+                "operation": { "type": "string", "enum": ["Add", "Multiply", "Divide", "Override"], "description": "Modifier operation" },
+                "magnitude": { "type": "number", "description": "Modifier value (negative for damage: e.g., -50)" }
+              },
+              "required": ["attribute", "operation", "magnitude"]
+            }
+          },
+          "grant_tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags to grant to the TARGET (routed via UTargetTagsGameplayEffectComponent)"
+          },
+          "asset_tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags this GE 'owns' (routed via UAssetTagsGameplayEffectComponent)"
+          },
+          "cue_tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "GameplayCue tags to trigger (must start with 'GameplayCue.')"
+          }
+        },
+        "required": ["asset_path", "duration_policy"]
+      }
+    },
+    {
+      "name": "gas_create_ability",
+      "description": "Create a UGameplayAbility Blueprint asset. Sets instancing policy, net execution policy, ability tags, cooldown GE, and cost GE. After creation, use inject_blueprint_nodes_t3d to build the ability graph (Event ActivateAbility -> ability tasks -> CommitAbility -> EndAbility). IMPORTANT: If using latent AbilityTasks (PlayMontageAndWait, WaitTargetData), instancing must be InstancedPerActor — NonInstanced will crash.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path (e.g., '/Game/GAS/Abilities/GA_Fireball')"
+          },
+          "instancing_policy": {
+            "type": "string",
+            "enum": ["InstancedPerActor", "InstancedPerExecution", "NonInstanced"],
+            "description": "How the ability is instanced (default: InstancedPerActor — REQUIRED for latent tasks)"
+          },
+          "net_execution_policy": {
+            "type": "string",
+            "enum": ["LocalPredicted", "ServerOnly", "LocalOnly", "ServerInitiated"],
+            "description": "Network execution mode (default: LocalPredicted for responsive gameplay)"
+          },
+          "ability_tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags identifying this ability (e.g., ['Ability.Melee.Slash'])"
+          },
+          "cooldown_effect": {
+            "type": "string",
+            "description": "Content path of the cooldown GE Blueprint (created via gas_create_effect)"
+          },
+          "cost_effect": {
+            "type": "string",
+            "description": "Content path of the cost GE Blueprint (created via gas_create_effect)"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    }
+  ]
+}

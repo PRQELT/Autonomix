@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "build_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "build_lighting",
+      "description": "Build lighting for the current level. This can take a while for complex scenes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "quality": {
+            "type": "string",
+            "enum": [
+              "Preview",
+              "Medium",
+              "High",
+              "Production"
+            ],
+            "description": "Lighting build quality (default: Preview)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "package_project",
+      "description": "Package the project for a target platform via UAT. This launches an external process and may take several minutes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "Win64",
+              "Linux",
+              "Mac",
+              "Android",
+              "IOS"
+            ],
+            "description": "Target platform"
+          },
+          "configuration": {
+            "type": "string",
+            "enum": [
+              "Development",
+              "Shipping",
+              "DebugGame"
+            ],
+            "description": "Build configuration"
+          },
+          "output_directory": {
+            "type": "string",
+            "description": "Optional output directory path"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      }
+    }
+  ]
+}

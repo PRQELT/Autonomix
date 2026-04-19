@@ -1,0 +1,316 @@
+{
+  "schema_version": "1.1.0",
+  "domain": "widget_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_widget_blueprint",
+      "description": "Create a new UMG Widget Blueprint asset (WBP_) with an optional root widget class.\n\nWidget Blueprints have TWO systems (analogous to Blueprint actors):\n  1. Widget Tree: Visual hierarchy of UWidget objects (CanvasPanel, TextBlock, Button, etc.)\n     — managed via add_widget, set_widget_property, set_widget_slot\n  2. Widget Blueprint Graph: Standard K2 Blueprint logic (OnClicked bindings, variable set/get)\n     — populated via inject_blueprint_nodes_t3d with asset_path pointing to the WBP\n\nNaming convention: WBP_ prefix (e.g. WBP_HealthBar, WBP_MainMenu, WBP_Settings)\n\nWorkflow:\n1. create_widget_blueprint — create the asset with root panel\n2. add_widget — build the widget hierarchy (TextBlock, Button, Image, ProgressBar, etc.)\n3. set_widget_slot — configure layout: anchors, offsets, padding, alignment, fill rules\n4. set_widget_property — set text, colors, visibility, percent\n5. set_widget_font — configure fonts on text widgets\n6. set_widget_brush — configure images/brushes on Image/Button/Border widgets\n7. bind_widget_event — bind OnClicked, OnHovered, etc. to Blueprint functions\n8. compile_widget_blueprint — verify no errors\n9. inject_blueprint_nodes_t3d — wire click/hover event logic in the graph",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the Widget Blueprint, e.g. /Game/UI/WBP_MainMenu. MUST start with /Game/ and be non-empty."
+          },
+          "root_widget_class": {
+            "type": "string",
+            "description": "Class for the root container widget. Default: CanvasPanel.\nOptions: CanvasPanel (freely positioned UI), VerticalBox (vertical auto-stack), HorizontalBox (horizontal auto-stack), SizeBox, Overlay (z-stacked layers), GridPanel, ScrollBox, WrapBox.\nUse CanvasPanel for HUD overlays with absolute positioning.\nUse VerticalBox/HorizontalBox for auto-layout menus and lists."
+          },
+          "parent_class": {
+            "type": "string",
+            "description": "Parent class for the Widget Blueprint. Default: UserWidget. Use 'CommonActivatableWidget' for full-screen menus with input routing (requires CommonUI plugin)."
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "add_widget",
+      "description": "Add a UMG widget to the widget tree of an existing Widget Blueprint.\n\nThe parent_widget MUST be a panel widget (a container that accepts children):\n\nPanel widgets (can be parents):\n  CanvasPanel — absolute positioning with anchors\n  VerticalBox — vertical auto-stack\n  HorizontalBox — horizontal auto-stack\n  GridPanel — grid layout\n  UniformGridPanel — uniform grid layout\n  ScrollBox — scrollable container\n  Overlay — z-stacked layers\n  WidgetSwitcher — tab-style visibility switcher\n  WrapBox — wrapping horizontal flow\n\nContent widgets (single child slot — can still be parent):\n  SizeBox — enforces min/max size on ONE child\n  ScaleBox — scales ONE child\n  Border — decorative border around ONE child\n  Button — clickable, contains ONE child (usually a TextBlock)\n  BackgroundBlur — blurred background for ONE child\n  InvalidationBox — caches rendering of ONE child\n  RetainerBox — render-to-texture for ONE child\n\nLeaf widgets (cannot be parents):\n  TextBlock — display text\n  RichTextBlock — styled text with markup\n  Image — display a texture/material\n  ProgressBar — fill-based value display\n  Slider — draggable numeric value\n  CheckBox — boolean toggle\n  EditableTextBox — single-line text input\n  MultiLineEditableTextBox — multi-line text input\n  ComboBoxString — dropdown selection\n  SpinBox — numeric spinner\n  Spacer — empty spacing\n  Throbber — animated loading dots\n  CircularThrobber — rotating loading indicator\n  ExpandableArea — collapsible section\n\nCall get_widget_tree FIRST to see current widget names and which are panels.\n\nIMPORTANT: After adding a widget to a CanvasPanel, you MUST call set_widget_slot to configure\nanchors, position, and size — otherwise the widget will have zero size and be invisible.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to modify"
+          },
+          "widget_class": {
+            "type": "string",
+            "description": "Widget class to add. See tool description for full list of panels, content widgets, and leaf widgets."
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Unique name for the widget in the tree, e.g. TitleText, HealthBar, PlayButton. Used to reference this widget in other tools."
+          },
+          "parent_widget": {
+            "type": "string",
+            "description": "Name of the parent widget to add this to. Must be a panel or content widget. Use get_widget_tree to find names. If omitted, attaches to root panel."
+          }
+        },
+        "required": ["asset_path", "widget_class", "widget_name"]
+      }
+    },
+
+    {
+      "name": "set_widget_slot",
+      "description": "Configure the layout slot of a widget within its parent panel.\n\nEvery widget inside a panel has a SLOT that controls its layout. The slot type depends on the parent:\n\n## CanvasPanel Slots (UCanvasPanelSlot)\nFor widgets inside a CanvasPanel — control position, size, and anchoring:\n  anchors_min — FVector2D: anchor minimum (0,0)=top-left (0.5,0.5)=center (1,1)=bottom-right\n  anchors_max — FVector2D: anchor maximum. Same as min for fixed position; (1,1) for stretch-to-fill\n  offsets — FMargin: position and size offsets from anchor (Left=X, Top=Y, Right=Width, Bottom=Height when not stretching; all=padding when stretching)\n  alignment — FVector2D: pivot point (0.5,0.5)=center\n  auto_size — bool: auto-size to content\n  z_order — int: draw order (higher = on top)\n\nCommon anchor presets:\n  Fixed top-left: anchors_min=(0,0), anchors_max=(0,0), offsets=(X,Y,Width,Height)\n  Centered: anchors_min=(0.5,0.5), anchors_max=(0.5,0.5), alignment=(0.5,0.5)\n  Stretch-to-fill: anchors_min=(0,0), anchors_max=(1,1), offsets=(padding all sides)\n  Stretch horizontal: anchors_min=(0,0.5), anchors_max=(1,0.5)\n  Top bar: anchors_min=(0,0), anchors_max=(1,0), offsets=(0,0,0,Height)\n\n## VerticalBox / HorizontalBox Slots\n  padding — FMargin: space around widget (Left,Top,Right,Bottom)\n  size_rule — string: 'Auto' (shrink to content) or 'Fill' (expand to fill available space)\n  h_align — string: Left, Center, Right, Fill\n  v_align — string: Top, Center, Bottom, Fill\n\n## Overlay Slots\n  padding — FMargin\n  h_align — string: Left, Center, Right, Fill\n  v_align — string: Top, Center, Bottom, Fill\n\n## GridPanel Slots\n  row, column — int: grid cell position\n  row_span, column_span — int: how many cells to span\n  padding — FMargin\n  h_align, v_align — string\n\nIMPORTANT: This tool is MANDATORY when adding widgets to a CanvasPanel.\nWithout it, widgets have zero size and are invisible.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Exact name of the widget whose slot to configure"
+          },
+          "anchors_min": {
+            "type": "string",
+            "description": "Anchor minimum as 'X,Y' (CanvasPanel only). E.g. '0,0' for top-left, '0.5,0.5' for center, '0,0' with anchors_max='1,1' for stretch-to-fill."
+          },
+          "anchors_max": {
+            "type": "string",
+            "description": "Anchor maximum as 'X,Y' (CanvasPanel only). Same as anchors_min for fixed position. '1,1' for stretch."
+          },
+          "offsets": {
+            "type": "string",
+            "description": "Offsets as 'Left,Top,Right,Bottom' (CanvasPanel only). For fixed position: Left=X, Top=Y, Right=Width, Bottom=Height. For stretch: all values are padding."
+          },
+          "alignment": {
+            "type": "string",
+            "description": "Alignment pivot as 'X,Y' (CanvasPanel only). '0.5,0.5' centers the widget on its anchor point."
+          },
+          "auto_size": {
+            "type": "boolean",
+            "description": "Auto-size to content (CanvasPanel only). Default: false."
+          },
+          "z_order": {
+            "type": "integer",
+            "description": "Draw order (CanvasPanel only). Higher = drawn on top."
+          },
+          "padding": {
+            "type": "string",
+            "description": "Padding as 'Left,Top,Right,Bottom' or single value for uniform. (All slot types)"
+          },
+          "size_rule": {
+            "type": "string",
+            "description": "Size rule: 'Auto' or 'Fill'. (VerticalBox/HorizontalBox/ScrollBox slots)"
+          },
+          "h_align": {
+            "type": "string",
+            "description": "Horizontal alignment: 'Left', 'Center', 'Right', 'Fill'. (VerticalBox/HorizontalBox/Overlay/Grid slots)"
+          },
+          "v_align": {
+            "type": "string",
+            "description": "Vertical alignment: 'Top', 'Center', 'Bottom', 'Fill'. (VerticalBox/HorizontalBox/Overlay/Grid slots)"
+          },
+          "row": {
+            "type": "integer",
+            "description": "Grid row index (GridPanel/UniformGridPanel only)"
+          },
+          "column": {
+            "type": "integer",
+            "description": "Grid column index (GridPanel/UniformGridPanel only)"
+          },
+          "row_span": {
+            "type": "integer",
+            "description": "Number of rows to span (GridPanel only)"
+          },
+          "column_span": {
+            "type": "integer",
+            "description": "Number of columns to span (GridPanel only)"
+          }
+        },
+        "required": ["asset_path", "widget_name"]
+      }
+    },
+
+    {
+      "name": "set_widget_property",
+      "description": "Set a property on a named widget inside a Widget Blueprint via C++ reflection.\n\nProperty names are exact C++ UPROPERTY names (case-sensitive). For complex types like fonts and brushes, prefer the dedicated set_widget_font and set_widget_brush tools.\n\nCommon properties by widget type:\n\nTextBlock:\n  Text — the displayed string (plain text, e.g. 'Hello World')\n  Justification — Left, Center, Right\n  AutoWrapText — true/false\n  WrapTextAt — float (0 = no wrap)\n  MinDesiredWidth — float\n  LineHeightPercentage — float (1.0 = default)\n  TextTransformPolicy — None, ToLower, ToUpper\n\nButton:\n  BackgroundColor — linear color: '(R=0.2,G=0.6,B=1.0,A=1.0)'\n  IsFocusable — true/false\n\nImage:\n  ColorAndOpacity — tint color: '(R=1.0,G=1.0,B=1.0,A=1.0)'\n\nProgressBar:\n  Percent — 0.0 to 1.0 fill value\n  FillColorAndOpacity — bar color\n  bIsMarquee — true/false for indeterminate progress\n\nSlider:\n  Value — 0.0 to 1.0\n  MinValue, MaxValue — range\n  StepSize — increment step\n  SliderBarColor, SliderHandleColor — colors\n\nCheckBox:\n  IsChecked — true/false\n\nEditableTextBox:\n  Text — initial text\n  HintText — placeholder text\n  IsPassword — true/false\n  IsReadOnly — true/false\n\nBorder:\n  ContentColorAndOpacity — content tint\n  BrushColor — border color\n  Padding — '(Left=5,Top=5,Right=5,Bottom=5)'\n\nSizeBox:\n  WidthOverride, HeightOverride — float (0 = no override)\n  MinDesiredWidth, MinDesiredHeight — float\n  MaxDesiredWidth, MaxDesiredHeight — float\n\nSpacer:\n  Size — '(X=20,Y=10)'\n\nAny widget:\n  Visibility — Visible, Collapsed, Hidden, HitTestInvisible, SelfHitTestInvisible\n  bIsEnabled — true/false\n  ToolTipText — hover tooltip string\n  RenderOpacity — 0.0 (transparent) to 1.0 (opaque)\n  Clipping — Inherit, ClipToBounds, ClipToBoundsWithoutIntersecting, ClipToBoundsAlways, OnDemand",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Exact name of the target widget (as shown in get_widget_tree)"
+          },
+          "property_name": {
+            "type": "string",
+            "description": "Exact C++ property name. Examples: Text, ColorAndOpacity, Visibility, Percent, bIsEnabled, BackgroundColor, Justification"
+          },
+          "property_value": {
+            "type": "string",
+            "description": "String-serialized value. Examples: 'Hello World' for text, '(R=1.0,G=0.5,B=0.0,A=1.0)' for color, 'Visible' for visibility, 'true'/'false' for booleans, '0.75' for floats"
+          }
+        },
+        "required": ["asset_path", "widget_name", "property_name", "property_value"]
+      }
+    },
+
+    {
+      "name": "set_widget_font",
+      "description": "Set the font on a text widget (TextBlock, EditableTextBox, RichTextBlock, MultiLineEditableTextBox).\n\nUE5 fonts use FSlateFontInfo which is complex to set via raw reflection. This tool provides a clean interface.\n\nAvailable engine fonts (no import needed):\n  Roboto — default UE font (Regular, Bold, Italic, Light, Medium, Black)\n  DroidSansMono — monospace font\n\nFor custom fonts, import a .ttf/.otf into the project first, then reference the asset path.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Name of the text widget to configure"
+          },
+          "font_family": {
+            "type": "string",
+            "description": "Font family name or asset path. Built-in: 'Roboto' (default). For custom fonts, use the asset path e.g. '/Game/Fonts/MyFont'"
+          },
+          "font_size": {
+            "type": "integer",
+            "description": "Font size in points. Common sizes: 12 (body), 16 (subtitle), 24 (title), 36 (heading), 48 (display). Default: 12"
+          },
+          "typeface": {
+            "type": "string",
+            "description": "Typeface style: Regular, Bold, Italic, Light, Medium, Black. Default: Regular"
+          },
+          "color": {
+            "type": "string",
+            "description": "Text color as '(R=1.0,G=1.0,B=1.0,A=1.0)'. Only for TextBlock (sets ColorAndOpacity)."
+          },
+          "shadow_offset": {
+            "type": "string",
+            "description": "Drop shadow offset as '(X=1,Y=1)'. Set to '(X=0,Y=0)' for no shadow."
+          },
+          "shadow_color": {
+            "type": "string",
+            "description": "Shadow color as '(R=0,G=0,B=0,A=0.5)'"
+          }
+        },
+        "required": ["asset_path", "widget_name", "font_size"]
+      }
+    },
+
+    {
+      "name": "set_widget_brush",
+      "description": "Set a brush (image/texture/solid color) on an Image, Button, Border, or ProgressBar widget.\n\nFSlateBrush is a complex struct that is difficult to set via raw reflection. This tool provides a clean interface.\n\nBrush targets by widget:\n  Image — 'Brush' (the displayed image)\n  Button — 'Normal', 'Hovered', 'Pressed', 'Disabled' (appearance states)\n  Border — 'Background' (border background)\n  ProgressBar — 'FillImage' (the fill bar brush)\n\nFor solid colors (no texture), just set tint_color and leave texture_path empty.\nFor textures, set texture_path to a Texture2D asset in the project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Name of the widget to set brush on"
+          },
+          "brush_target": {
+            "type": "string",
+            "description": "Which brush to set. Image: 'Brush'. Button: 'Normal', 'Hovered', 'Pressed', 'Disabled'. Border: 'Background'. ProgressBar: 'FillImage'. Default: 'Brush'."
+          },
+          "texture_path": {
+            "type": "string",
+            "description": "Asset path of the texture, e.g. '/Game/Textures/T_ButtonNormal'. Leave empty for solid color."
+          },
+          "tint_color": {
+            "type": "string",
+            "description": "Tint/color as '(R=1.0,G=1.0,B=1.0,A=1.0)'. For solid color brushes (no texture), this IS the color."
+          },
+          "image_size": {
+            "type": "string",
+            "description": "Desired image size as '(X=64,Y=64)'. Affects the brush draw size."
+          },
+          "draw_as": {
+            "type": "string",
+            "description": "How to draw: 'Box' (9-slice), 'Border' (border only), 'Image' (stretch to fill), 'NoDrawType' (invisible). Default: Image."
+          },
+          "margin": {
+            "type": "string",
+            "description": "9-slice margin as '(Left=0.25,Top=0.25,Right=0.25,Bottom=0.25)'. Only used with draw_as=Box."
+          }
+        },
+        "required": ["asset_path", "widget_name"]
+      }
+    },
+
+    {
+      "name": "bind_widget_event",
+      "description": "Bind a widget event (OnClicked, OnHovered, etc.) to a custom event in the Widget Blueprint's EventGraph.\n\nThis creates a K2Node_ComponentBoundEvent node in the EventGraph that fires when the widget event occurs. After binding, you can use inject_blueprint_nodes_t3d to wire logic from the event node.\n\nSupported events by widget type:\n  Button: OnClicked, OnPressed, OnReleased, OnHovered, OnUnhovered\n  Slider: OnValueChanged, OnMouseCaptureBegin, OnMouseCaptureEnd\n  CheckBox: OnCheckStateChanged\n  EditableTextBox: OnTextChanged, OnTextCommitted\n  ComboBoxString: OnSelectionChanged, OnOpening\n  SpinBox: OnValueChanged, OnValueCommitted\n\nThe tool returns the created event node's name (e.g. 'K2Node_ComponentBoundEvent_0') which you can use as a starting point for inject_blueprint_nodes_t3d to wire subsequent logic.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Name of the widget to bind the event on (e.g. 'PlayButton')"
+          },
+          "event_name": {
+            "type": "string",
+            "description": "Name of the delegate event to bind. Button: OnClicked, OnPressed, OnReleased, OnHovered, OnUnhovered. Slider: OnValueChanged. CheckBox: OnCheckStateChanged. EditableTextBox: OnTextChanged, OnTextCommitted."
+          }
+        },
+        "required": ["asset_path", "widget_name", "event_name"]
+      }
+    },
+
+    {
+      "name": "remove_widget",
+      "description": "Remove a widget from the widget tree of a Widget Blueprint.\n\nIf the widget is a panel with children, all children are also removed.\nIf the widget is the root, the tree becomes empty (rootless).\nCannot be undone within this tool — use checkpoint restore to undo.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint"
+          },
+          "widget_name": {
+            "type": "string",
+            "description": "Name of the widget to remove"
+          }
+        },
+        "required": ["asset_path", "widget_name"]
+      }
+    },
+
+    {
+      "name": "get_widget_tree",
+      "description": "Read-only query: return the full widget hierarchy of a Widget Blueprint as JSON.\n\nReturns a list of all widgets with:\n  - name: exact widget name (use this in other widget tools)\n  - class: widget class name\n  - is_root: whether this is the root widget\n  - is_panel: true = can be used as parent_widget in add_widget\n  - child_count: number of direct children (for panels)\n  - slot_type: the slot class (e.g. CanvasPanelSlot, VerticalBoxSlot)\n  - parent: name of the parent widget (null for root)\n\nCall this BEFORE add_widget, set_widget_slot, or set_widget_property to know exact widget names and hierarchy.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to inspect"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "compile_widget_blueprint",
+      "description": "Compile a Widget Blueprint and return all errors and warnings.\n\nWidget Blueprints use the same compiler as regular Blueprint actors. Call after building the widget tree, setting slot properties, and wiring graph logic to verify correctness.\n\nAlso reports the widget count and root widget type for verification.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Widget Blueprint to compile"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    }
+  ]
+}

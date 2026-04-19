@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "task_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "update_todo_list",
+      "description": "Replace the entire TODO list with an updated checklist reflecting the current state. Always provide the full list; the system will overwrite the previous one. This tool is designed for step-by-step task tracking, allowing you to confirm completion of each step before updating, update multiple task statuses at once (e.g., mark one as completed and start the next), and dynamically add new todos discovered during long or complex tasks.\n\nChecklist Format:\n- Use a single-level markdown checklist (no nesting or subtasks)\n- List todos in the intended execution order\n- Status options: [ ] (pending), [x] (completed), [-] (in progress)\n\nCore Principles:\n- Before updating, always confirm which todos have been completed\n- You may update multiple statuses in a single update\n- Add new actionable items as they're discovered\n- Only mark a task as completed when fully accomplished\n- Keep all unfinished tasks unless explicitly instructed to remove\n\nWhen to Use:\n- Task involves multiple steps or requires ongoing tracking\n- Need to update status of several todos at once\n- New actionable items are discovered during execution\n- Task is complex and benefits from stepwise progress tracking\n\nWhen NOT to Use:\n- Only a single, trivial task\n- Task can be completed in one or two simple steps\n- Request is purely conversational or informational",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "todos": {
+            "type": "string",
+            "description": "Full markdown checklist in execution order, using [ ] for pending, [x] for completed, and [-] for in progress. Example:\n[x] Analyze requirements\n[x] Design architecture\n[-] Implement core logic\n[ ] Write tests\n[ ] Update documentation"
+          }
+        },
+        "required": [
+          "todos"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "python_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "execute_python_script",
+      "description": "Write and execute a Python script natively via Unreal's Python Editor Script Plugin. The script runs in-process with full access to the 'unreal' module. Use this for bulk asset operations, Niagara/MetaSound manipulation, custom editor utilities, data validation, and any operation exposed to Python via UFUNCTION(BlueprintCallable). Requires Developer security mode. The script's stdout/stderr output is captured and returned. IMPORTANT: The Python Script Plugin must be enabled in the project. Do NOT use os.system, subprocess, or network calls — these are blocked by the security validator.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "The Python script source code to execute. Has access to the 'unreal' module for all editor APIs. Print statements are captured as output. Example: 'import unreal\\nasset_tools = unreal.AssetToolsHelpers.get_asset_tools()\\nprint(\"Asset tools ready\")'"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "Maximum execution time in seconds (5-120, default 30). Script is terminated if it exceeds this limit."
+          }
+        },
+        "required": ["script"]
+      }
+    }
+  ]
+}

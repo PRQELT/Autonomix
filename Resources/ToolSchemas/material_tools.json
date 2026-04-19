@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "material_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_material",
+      "description": "Create a new Material asset with material expressions and connections.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path, e.g. /Game/Materials/M_Ground"
+          },
+          "expressions": {
+            "type": "array",
+            "description": "Material expressions to add",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Expression type: TextureSample, Constant, Constant3Vector, Color, Multiply, Lerp, LinearInterpolate, ScalarParameter, VectorParameter, TextureCoordinate"
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Node X position in graph"
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Node Y position in graph"
+                },
+                "value": {
+                  "type": "number",
+                  "description": "Value for Constant expressions"
+                },
+                "parameter_name": {
+                  "type": "string",
+                  "description": "Name for parameter expressions"
+                },
+                "connect_to": {
+                  "type": "string",
+                  "description": "Material property to connect to: BaseColor, Metallic, Specular, Roughness, EmissiveColor, Normal, Opacity, OpacityMask"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "asset_path"
+        ]
+      }
+    },
+    {
+      "name": "create_material_instance",
+      "description": "Create a Material Instance from a parent material with parameter overrides.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the new MI"
+          },
+          "parent_material": {
+            "type": "string",
+            "description": "Content path of the parent Material"
+          },
+          "scalar_parameters": {
+            "type": "object",
+            "description": "Scalar parameter overrides: {\"Roughness\": 0.5}"
+          },
+          "vector_parameters": {
+            "type": "object",
+            "description": "Vector parameter overrides: {\"BaseColor\": {\"r\":1,\"g\":0,\"b\":0,\"a\":1}}"
+          }
+        },
+        "required": [
+          "asset_path",
+          "parent_material"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "datatable_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "create_data_table",
+      "description": "Create a new DataTable asset targeting an existing FTableRowBase-derived struct. DataTables are used for game balancing, item databases, weapon stats, dialogue, and more. After creation, use import_json_to_datatable to populate rows.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the new DataTable (e.g., '/Game/Data/DT_Weapons')"
+          },
+          "row_struct": {
+            "type": "string",
+            "description": "Name of the FTableRowBase-derived struct (e.g., 'FWeaponStatsRow', 'FCharacterInfoRow'). Must be compiled and available."
+          }
+        },
+        "required": ["asset_path", "row_struct"]
+      }
+    },
+    {
+      "name": "import_json_to_datatable",
+      "description": "Import JSON data into an existing DataTable. Each row object must have a 'Name' field (row key) and properties matching the struct's UPROPERTY names exactly. Replaces all existing rows.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the target DataTable (e.g., '/Game/Data/DT_Weapons')"
+          },
+          "json_data": {
+            "type": "string",
+            "description": "JSON array of row objects. Each must have 'Name' as the row key. Example: '[{\"Name\":\"Sword\",\"Damage\":50,\"Speed\":1.2},{\"Name\":\"Axe\",\"Damage\":80,\"Speed\":0.8}]'"
+          }
+        },
+        "required": ["asset_path", "json_data"]
+      }
+    }
+  ]
+}

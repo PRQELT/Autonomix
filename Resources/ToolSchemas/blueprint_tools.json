@@ -1,0 +1,468 @@
+{
+  "schema_version": "2.0.0",
+  "domain": "blueprint_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_blueprint_actor",
+      "description": "Create a new Blueprint asset with optional inline components and variables. Compiles and saves automatically.\n\nCommon parent_class values: Actor, Pawn, Character, PlayerController, GameModeBase, HUD, GameStateBase, PlayerState, ActorComponent, SceneComponent.\n\nFor a 3rd-person character use parent_class='Character' with SpringArmComponent (CameraBoom) + CameraComponent (FollowCamera).\nFor a projectile use parent_class='Actor' with ProjectileMovementComponent + SphereComponent + StaticMeshComponent.\n\nAfter creation, use inject_blueprint_nodes_t3d to add logic, and set_component_properties to assign meshes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the new Blueprint, e.g. /Game/Blueprints/BP_Enemy"
+          },
+          "parent_class": {
+            "type": "string",
+            "description": "Parent class name. Aliases: Actor, Pawn, Character, PlayerController, GameModeBase. Or any UE class name."
+          },
+          "components": {
+            "type": "array",
+            "description": "Components to add via the Simple Construction Script (SCS). Each becomes a variable accessible from the Event Graph.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Variable name for the component in the Blueprint, e.g. CameraBoom, FollowCamera, CollisionBox"
+                },
+                "class": {
+                  "type": "string",
+                  "description": "Component class name (without the U prefix). Examples: StaticMeshComponent, SkeletalMeshComponent, CapsuleComponent, BoxComponent, SphereComponent, SpringArmComponent, CameraComponent, CharacterMovementComponent, FloatingPawnMovement, ProjectileMovementComponent, ArrowComponent, AudioComponent, NiagaraComponent, WidgetComponent, SceneComponent, PointLightComponent, SpotLightComponent, RectLightComponent"
+                },
+                "attach_to": {
+                  "type": "string",
+                  "description": "Variable name of the parent component to attach to. Use the name of another component in this array, or 'DefaultSceneRoot' for the actor root. If omitted, attaches to the default scene root."
+                }
+              },
+              "required": ["name", "class"]
+            }
+          },
+          "variables": {
+            "type": "array",
+            "description": "Member variables to add to the Blueprint.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Variable name" },
+                "type": {
+                  "type": "string",
+                  "description": "Variable type: bool, int, int64, float, double, FString, FText, FName, byte, FVector, FRotator, FTransform, FLinearColor, FVector2D, or any UClass/UStruct name"
+                },
+                "editable": {
+                  "type": "boolean",
+                  "description": "Whether editable in the Details panel on level instances (default: true)"
+                },
+                "category": {
+                  "type": "string",
+                  "description": "Category for organizing in the Details panel"
+                }
+              },
+              "required": ["name", "type"]
+            }
+          }
+        },
+        "required": ["asset_path", "parent_class"]
+      }
+    },
+
+    {
+      "name": "add_blueprint_component",
+      "description": "Add a component to an existing Blueprint via the Simple Construction Script. The component becomes a variable accessible from the Event Graph by its component_name.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to modify"
+          },
+          "component_class": {
+            "type": "string",
+            "description": "Component class name (without U prefix): StaticMeshComponent, SkeletalMeshComponent, BoxComponent, SphereComponent, CapsuleComponent, SpringArmComponent, CameraComponent, ProjectileMovementComponent, etc."
+          },
+          "component_name": {
+            "type": "string",
+            "description": "Variable name for the new component in the Blueprint, e.g. CameraBoom, HealthBar, TriggerBox"
+          },
+          "attach_to": {
+            "type": "string",
+            "description": "Variable name of the parent component to attach to. Use get_blueprint_info to find existing component names."
+          }
+        },
+        "required": ["asset_path", "component_class", "component_name"]
+      }
+    },
+
+    {
+      "name": "add_blueprint_variable",
+      "description": "Add a typed member variable to an existing Blueprint. Variables can then be read/written in the Event Graph via VariableGet/VariableSet nodes in T3D.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "variable_name": {
+            "type": "string",
+            "description": "Name for the new variable, e.g. Health, MaxSpeed, bIsAlive"
+          },
+          "variable_type": {
+            "type": "string",
+            "description": "Type: bool, int, int64, float, double, FString, FText, FName, byte, FVector, FRotator, FTransform, FLinearColor, or any class/struct name"
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "Whether editable in the Details panel (default: true)"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category for grouping in Details panel, e.g. 'Combat', 'Movement'"
+          }
+        },
+        "required": ["asset_path", "variable_name", "variable_type"]
+      }
+    },
+
+    {
+      "name": "add_blueprint_function",
+      "description": "Add a new named function graph to a Blueprint. Creates the function entry and result nodes automatically.\n\nAfter creation, populate the function body using inject_blueprint_nodes_t3d with graph_name equal to this function_name.\n\nIMPORTANT: Latent nodes (Delay, MoveComponentTo, AIMoveTo) CANNOT be used inside functions — use Custom Events in the EventGraph instead.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "function_name": {
+            "type": "string",
+            "description": "Name for the new function, e.g. CalculateDamage, ApplyHealthChange, GetNearestEnemy"
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Input parameter definitions for the function signature",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Parameter name" },
+                "type": { "type": "string", "description": "Parameter type: bool, int, float, FVector, etc." }
+              },
+              "required": ["name", "type"]
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "description": "Return value definitions for the function signature",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Return value name" },
+                "type": { "type": "string", "description": "Return value type" }
+              },
+              "required": ["name", "type"]
+            }
+          }
+        },
+        "required": ["asset_path", "function_name"]
+      }
+    },
+
+    {
+      "name": "add_blueprint_event",
+      "description": "Add a standard override event node to the Blueprint EventGraph. Avoids duplicate event nodes.\n\nSupported event_name values:\n  Actor: BeginPlay, EndPlay, Tick, ActorBeginOverlap, ActorEndOverlap, Hit, AnyDamage, PointDamage, RadialDamage, Destroyed, ActorBeginCursorOver, ActorEndCursorOver\n  Pawn: PossessedBy, UnPossessed, SetupPlayerInputComponent\n  Character: Landed\n\nNOTE on Enhanced Input: For player input handling with the Enhanced Input System, use SetupPlayerInputComponent to bind IA_* Input Action assets to Blueprint functions. Do NOT use old Input Axis/Action events — they are legacy.\n\nRETURNS: The internal node name (e.g. \"K2Node_Event_0\"), position, and the exec output pin name. Use the returned node name with connect_blueprint_pins to wire nodes created in separate calls.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "event_name": {
+            "type": "string",
+            "description": "One of: BeginPlay, EndPlay, Tick, ActorBeginOverlap, ActorEndOverlap, Hit, AnyDamage, PointDamage, RadialDamage, Destroyed, ActorBeginCursorOver, ActorEndCursorOver, PossessedBy, UnPossessed, SetupPlayerInputComponent, Landed"
+          },
+          "node_pos_x": {
+            "type": "integer",
+            "description": "Horizontal position of the event node in the graph (default: 0)"
+          },
+          "node_pos_y": {
+            "type": "integer",
+            "description": "Vertical position hint for the event node. Default: auto (placed below existing nodes)."
+          }
+        },
+        "required": ["asset_path", "event_name"]
+      }
+    },
+
+    {
+      "name": "compile_blueprint",
+      "description": "Compile a Blueprint and return all errors and warnings. Use this to verify correctness after node injection or other modifications.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to compile"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "set_blueprint_defaults",
+      "description": "Set default property values on a Blueprint's Class Default Object (CDO).\n\nFor component properties, use the 'ComponentName.PropertyName' syntax.\n\nExamples:\n  { \"TargetArmLength\": \"300\" }  — direct CDO property\n  { \"CameraBoom.TargetArmLength\": \"300\" }  — component template property\n  { \"DefaultPawnClass\": \"/Game/Blueprints/BP_MyCharacter.BP_MyCharacter_C\" }  — object reference\n\nProperty names are exact C++ property names (case-sensitive). Use get_blueprint_info to see available variable names.\nPREFER set_component_properties for mesh assignment, transforms, and collision — it has dedicated first-class support.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "defaults": {
+            "type": "object",
+            "description": "Key-value pairs of property names and their string-serialized values. Use 'ComponentName.PropertyName' for component properties."
+          }
+        },
+        "required": ["asset_path", "defaults"]
+      }
+    },
+
+    {
+      "name": "set_component_properties",
+      "description": "Set properties on a specific SCS component template inside a Blueprint. This is the CORRECT way to:\n  - Assign a static mesh to a StaticMeshComponent\n  - Assign a skeletal mesh to a SkeletalMeshComponent\n  - Set relative location, rotation, or scale\n  - Set a collision profile\n  - Set any other component property via reflection\n\nUse get_blueprint_info first to confirm the component variable name.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "component_name": {
+            "type": "string",
+            "description": "Variable name of the SCS component to modify (exactly as shown in get_blueprint_info)"
+          },
+          "static_mesh": {
+            "type": "string",
+            "description": "Content path to a UStaticMesh asset to assign, e.g. /Game/Meshes/SM_Rock"
+          },
+          "skeletal_mesh": {
+            "type": "string",
+            "description": "Content path to a USkeletalMesh asset to assign, e.g. /Game/Characters/SK_Mannequin"
+          },
+          "relative_location": {
+            "type": "object",
+            "description": "Relative location offset from parent",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "relative_rotation": {
+            "type": "object",
+            "description": "Relative rotation from parent",
+            "properties": {
+              "pitch": { "type": "number" },
+              "yaw": { "type": "number" },
+              "roll": { "type": "number" }
+            }
+          },
+          "relative_scale": {
+            "type": "object",
+            "description": "Relative scale (1,1,1 = default)",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "collision_profile": {
+            "type": "string",
+            "description": "Collision preset name: NoCollision, BlockAll, BlockAllDynamic, OverlapAll, OverlapAllDynamic, Trigger, Pawn, CharacterMesh, PhysicsActor, Projectile, Custom"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Generic reflection-based property writes. Keys are exact C++ property names; values are string-serialized. Example: {\"TargetArmLength\": \"400\", \"bUsePawnControlRotation\": \"true\"}"
+          }
+        },
+        "required": ["asset_path", "component_name"]
+      }
+    },
+
+    {
+      "name": "inject_blueprint_nodes_t3d",
+      "description": "PRIMARY LOGIC GRAPH CONSTRUCTION METHOD.\n\nInjects T3D-serialized Blueprint node text directly into a Blueprint graph. Internally uses FEdGraphUtilities::ImportNodesFromText — the exact same mechanism as Blueprint editor paste (Ctrl+V).\n\nThis is the preferred approach for all logic construction because:\n  1. T3D is text — LLMs generate it far more accurately than navigating the C++ FGraphNodeCreator API\n  2. Entire systems (health logic, movement state machines) can be built in one block\n  3. Malformed T3D fails silently rather than crashing the editor\n\n=== T3D FORMAT RULES ===\n\nEach node block:\n  Begin Object Class=/Script/BlueprintGraph.K2Node_XXX Name=\"UniqueNodeName\"\n    NodePosX=100\n    NodePosY=200\n    CustomProperties Pin (PinId=LINK_1,PinName=\"execute\",PinType.PinCategory=\"exec\")\n    CustomProperties Pin (PinId=LINK_2,PinName=\"result\",Direction=EGPD_Output,PinType.PinCategory=\"exec\",LinkedTo=(UniqueOtherNode LINK_3))\n  End Object\n\nGUID Placeholders:\n  Use LINK_1, LINK_2, GUID_A, NODEREF_Entry etc. as placeholder IDs.\n  The plugin auto-resolves them to fresh GUIDs before injection.\n  Each unique placeholder gets the SAME real GUID throughout the T3D block, so cross-node links are preserved.\n\nPin Directions:\n  Input pins: no Direction field (default = EGPD_Input)\n  Output pins: Direction=EGPD_Output\n\nPin Categories:\n  exec, bool, int, int64, real (float/double), name, string, text, byte, object, struct\n\nLinking pins across nodes:\n  LinkedTo=(OtherNodeName OtherPinId)\n\n=== COMMON NODE CLASSES ===\n\nControl Flow:\n  UK2Node_IfThenElse           — Branch (Condition bool input, True/False exec outputs)\n  UK2Node_ExecutionSequence    — Sequence (Then_0, Then_1, Then_2... exec outputs)\n  UK2Node_MacroInstance        — ForEachLoop, WhileLoop (uses standard macro library)\n  UK2Node_FunctionResult       — Return Node (for function graphs only)\n  UK2Node_CustomEvent          — Custom Event (use in EventGraph; supports latent nodes)\n\nVariable Access:\n  UK2Node_VariableGet          — Get a Blueprint variable\n  UK2Node_VariableSet          — Set a Blueprint variable\n\nFunction Calls:\n  UK2Node_CallFunction with FunctionReference=(MemberParent=\"/Script/CoreUObject.Class'/Script/Engine.XXX'\",MemberName=\"FunctionName\")\n\nCommon Function Nodes:\n  Print String:        MemberParent='/Script/Engine.KismetSystemLibrary', MemberName='PrintString'\n  Delay:              MemberParent='/Script/Engine.KismetSystemLibrary', MemberName='Delay' (latent — EventGraph only)\n  SetActorLocation:   MemberParent='/Script/Engine.Actor', MemberName='K2_SetActorLocation'\n  GetActorLocation:   MemberParent='/Script/Engine.Actor', MemberName='K2_GetActorLocation'\n  SetActorRotation:   MemberParent='/Script/Engine.Actor', MemberName='K2_SetActorRotation'\n  GetActorRotation:   MemberParent='/Script/Engine.Actor', MemberName='K2_GetActorRotation'\n  GetOverlappingActors: MemberParent='/Script/Engine.Actor', MemberName='GetOverlappingActors'\n  SetHiddenInGame:    MemberParent='/Script/Engine.Actor', MemberName='SetActorHiddenInGame'\n  DestroyActor:       MemberParent='/Script/Engine.Actor', MemberName='K2_DestroyActor'\n  SpawnActor:         MemberParent='/Script/Engine.GameplayStatics', MemberName='BeginSpawningActorFromClass'\n  GetPlayerPawn:      MemberParent='/Script/Engine.GameplayStatics', MemberName='GetPlayerPawn'\n  GetPlayerController: MemberParent='/Script/Engine.GameplayStatics', MemberName='GetPlayerController'\n  CastTo:             UK2Node_DynamicCast\n\nMath (Pure — no exec pins):\n  Add (float):        MemberParent='/Script/Engine.KismetMathLibrary', MemberName='Add_FloatFloat'\n  Subtract (float):   MemberParent='/Script/Engine.KismetMathLibrary', MemberName='Subtract_FloatFloat'\n  Multiply (float):   MemberParent='/Script/Engine.KismetMathLibrary', MemberName='Multiply_FloatFloat'\n  Clamp (float):      MemberParent='/Script/Engine.KismetMathLibrary', MemberName='FClamp'\n  Max (float):        MemberParent='/Script/Engine.KismetMathLibrary', MemberName='FMax'\n  Min (float):        MemberParent='/Script/Engine.KismetMathLibrary', MemberName='FMin'\n  InterpTo:           MemberParent='/Script/Engine.KismetMathLibrary', MemberName='FInterpTo'\n  RandomFloat:        MemberParent='/Script/Engine.KismetMathLibrary', MemberName='RandomFloatInRange'\n  VectorLength:       MemberParent='/Script/Engine.KismetMathLibrary', MemberName='VSize'\n  VectorAdd:          MemberParent='/Script/Engine.KismetMathLibrary', MemberName='Add_VectorVector'\n  MakeVector:         MemberParent='/Script/Engine.KismetMathLibrary', MemberName='MakeVector'\n  FindLookAtRotation: MemberParent='/Script/Engine.KismetMathLibrary', MemberName='FindLookAtRotation'\n\n=== SPATIAL LAYOUT RULES ===\n\nFlow left-to-right (increasing NodePosX).\nVertical grouping: separate unrelated logic clusters by ~400 units on Y axis.\nLeave ~300-400 units X between connected nodes.\nFirst node after an event: NodePosX=300, same NodePosY as the event node.\n\n=== POST-INJECTION PIN AUDIT ===\n\nAfter every injection this tool automatically inspects all unconnected input pins on the imported nodes and appends a 'PINS REQUIRING ATTENTION' section to the result if problems are found.\n\nEntry format:\n  • [NodeTitle] pin \"PinName\" (category:SubType) = CurrentValue\n    ACTION: Recommended action\n\nPin categories reported and what to do:\n  object / softobject — DefaultObject is null (empty asset reference).\n    → Call search_assets(class_filter='ClassName') BEFORE re-injecting to locate a valid asset.\n    → Common examples: Material, StaticMesh, SkeletalMesh, AnimationAsset, Skeleton, PhysicsAsset, Sound.\n    → After finding the asset, include its content path in the T3D DefaultObject field or use set_blueprint_defaults.\n  real / float / int — value is 0 or empty.\n    → Set an explicit non-zero value if the logic requires it.\n    → Example: Make Color node for blue → R=0.0, G=0.0, B=1.0, A=1.0 (set DefaultValue on each pin).\n  struct (FLinearColor, FVector, FRotator, etc.) — all components are zero.\n    → Set explicit component values if a non-zero result is intended.\n    → Example: blue FLinearColor → DefaultValue=\"(R=0.000000,G=0.000000,B=1.000000,A=1.000000)\".\n\n=== MANDATORY POST-INJECTION WORKFLOW ===\n  1. After EVERY inject_blueprint_nodes_t3d call, read the entire result message.\n  2. If a 'PINS REQUIRING ATTENTION' section is present, act on EVERY entry before considering the task done.\n  3. For [EMPTY] object pins: call search_assets first, then assign the found asset path.\n  4. For zero numeric/struct pins: supply the correct explicit value.\n  5. Never leave asset references empty or leave numeric defaults at zero unless the task explicitly requires it.\n  6. If you would have called Create Dynamic Material Instance, you MUST search for an available Material asset first.\n  7. If you would set a color on Make Color or Make Linear Color, you MUST set all components explicitly (do not rely on defaults).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the target Blueprint"
+          },
+          "t3d_text": {
+            "type": "string",
+            "description": "T3D-formatted node block(s). Each node: Begin Object Class=... Name=\"...\"\n  ...\nEnd Object"
+          },
+          "graph_name": {
+            "type": "string",
+            "description": "Name of the target graph. Default: 'EventGraph'. Use the function name to target a specific function graph. Use add_blueprint_function first if the graph doesn't exist yet."
+          }
+        },
+        "required": ["asset_path", "t3d_text"]
+      }
+    },
+
+    {
+      "name": "get_blueprint_info",
+      "description": "Read-only query: returns a JSON description of a Blueprint's current state including compile status, parent class, all member variables (name/type/category), all SCS components (name/class/parent hierarchy), and all graphs with FULL NODE DETAILS (name, class, title, position, all pins with names/types/connections).\n\nCall this BEFORE inject_blueprint_nodes_t3d to:\n  - Know component variable names for T3D VariableGet nodes\n  - Know which graphs already exist\n  - Avoid creating duplicate variables or functions\n  - Confirm the Blueprint compiled successfully\n\nCALL THIS BEFORE connect_blueprint_pins to get the exact internal node names and pin names needed for wiring.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to inspect"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "connect_blueprint_pins",
+      "description": "Explicitly wire two pins between existing nodes in a Blueprint graph.\n\nUse this when nodes were added in separate tool calls and need to be connected. For example:\n  1. add_blueprint_event returns node name 'K2Node_Event_0'\n  2. inject_blueprint_nodes_t3d adds a PrintString node as 'K2Node_CallFunction_2'\n  3. connect_blueprint_pins wires K2Node_Event_0.then -> K2Node_CallFunction_2.execute\n\nWORKFLOW:\n  1. Call get_blueprint_info to get the current internal node names and their pin names\n  2. Call connect_blueprint_pins with the exact internal names\n  3. If the connection is rejected, the tool returns the available pin names to help you pick the right one\n\nCOMMON PIN NAMES:\n  Execution output: 'then' (most nodes), 'True'/'False' (Branch), 'Completed' (latent nodes)\n  Execution input:  'execute' (most nodes)\n  Data output:      'ReturnValue' (function returns), custom pin names\n  Data input:       'Target' (self/object), 'Value', 'Condition', custom names\n\nNOTE: The tool does type checking via the Blueprint schema. If types are incompatible it explains why.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint"
+          },
+          "graph_name": {
+            "type": "string",
+            "description": "Graph to operate in. Default: 'EventGraph'. Use the function name for function graphs."
+          },
+          "source_node": {
+            "type": "string",
+            "description": "Internal name of the source node that has the output pin. Get this from get_blueprint_info or from the return value of add_blueprint_event. Example: 'K2Node_Event_0', 'K2Node_CallFunction_3'"
+          },
+          "source_pin": {
+            "type": "string",
+            "description": "Output pin name on the source node. Common exec output pins: 'then', 'True', 'False', 'Completed'. Common data output pins: 'ReturnValue'. Get exact names from get_blueprint_info."
+          },
+          "target_node": {
+            "type": "string",
+            "description": "Internal name of the target node that has the input pin. Get this from get_blueprint_info. Example: 'K2Node_CallFunction_1', 'K2Node_VariableSet_0'"
+          },
+          "target_pin": {
+            "type": "string",
+            "description": "Input pin name on the target node. Common exec input pins: 'execute'. Common data input pins: 'Target', 'Value', 'Condition', 'InDeltaTime'. Get exact names from get_blueprint_info."
+          }
+        },
+        "required": ["asset_path", "source_node", "source_pin", "target_node", "target_pin"]
+      }
+    },
+
+    {
+      "name": "add_enhanced_input_node",
+      "description": "Add a K2Node_EnhancedInputAction to a Blueprint's EventGraph.\n\nThis is REQUIRED for Enhanced Input — these nodes CANNOT be created via inject_blueprint_nodes_t3d because UInputAction asset references don't serialize through T3D text import.\n\nAfter adding the node, use connect_blueprint_pins to wire its output pins (Triggered, Started, Completed, Ongoing, Canceled) to your handler function.\n\nWORKFLOW:\n1. Use search_assets to find the IA_ input action asset path\n2. Call add_enhanced_input_node with the IA path\n3. Use connect_blueprint_pins to wire 'Triggered' to your handler's 'execute' pin\n\nOutput pins on the created node:\n  - Triggered (exec) — fires when input trigger conditions are met\n  - Started (exec) — fires on initial press\n  - Ongoing (exec) — fires every frame while held\n  - Completed (exec) — fires on release after trigger\n  - Canceled (exec) — fires if trigger conditions fail\n  - ActionValue (struct) — the input value (bool/float/vector depending on action type)\n  - ElapsedSeconds (float) — time since trigger started\n  - TriggeredSeconds (float) — time since action was triggered",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to add the node to (e.g. '/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter')"
+          },
+          "input_action": {
+            "type": "string",
+            "description": "Content path of the UInputAction asset (e.g. '/Game/ThirdPerson/Input/Actions/IA_Jump')"
+          },
+          "node_pos_x": {
+            "type": "integer",
+            "description": "X position in graph. Default: 0"
+          },
+          "node_pos_y": {
+            "type": "integer",
+            "description": "Y position in graph. Default: 0"
+          }
+        },
+        "required": ["asset_path", "input_action"]
+      }
+    },
+    {
+      "name": "verify_blueprint_connections",
+      "description": "Scan a Blueprint's graphs for connection issues and attempt automatic repairs.\n\nUSE THIS TOOL after inject_blueprint_nodes_t3d when the inject result contains a SANITISER warning (broken LinkedTo references), or when a compile step reports 'no connections on exec pin'.\n\nPASS 1 — CollectIssues:\n  - Removes stale/null LinkedTo references left behind by multi-batch T3D injections\n  - Detects disconnected exec-output pins on FunctionEntry, CallFunction, and Event nodes\n  - Detects disconnected exec-input pins on CallFunction and FunctionResult nodes\n\nPASS 2 — AttemptRepair:\n  - When a FunctionEntry exec-out is unconnected and exactly ONE CallFunction in the same graph has an unconnected exec-in, auto-wires them\n  - Recompiles the Blueprint after any successful repair\n  - Reports ambiguous cases (multiple candidates) as UNRESOLVED — use connect_blueprint_pins to wire those manually\n\nOUTPUT: A structured report with three sections:\n  [ISSUES FOUND]   — all detected problems\n  [REPAIRS MADE]   — auto-wired connections\n  [UNRESOLVED]     — issues requiring manual connect_blueprint_pins calls\n\nWORKFLOW:\n1. inject_blueprint_nodes_t3d → check for SANITISER warnings\n2. If warnings present, or compile shows missing exec wires → call verify_blueprint_connections\n3. For any UNRESOLVED entries → call connect_blueprint_pins with the node/pin names listed\n4. compile_blueprint to confirm clean build",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to verify (e.g. '/Game/Blueprints/BP_MyActor.BP_MyActor')"
+          },
+          "graph_name": {
+            "type": "string",
+            "description": "Name of a specific graph to check (e.g. 'MyFunction', 'EventGraph'). If omitted, all UbergraphPages and FunctionGraphs are checked."
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "set_node_pin_default",
+      "description": "Set the default value of an INPUT pin on an existing Blueprint graph node.\n\nThis is the CORRECT tool for setting literal values on pins of already-existing nodes.\nUse this when you need to set a value AFTER node injection or on pre-existing nodes.\n\nDO NOT confuse with:\n  - set_blueprint_defaults: sets CDO (Class Default Object) member variable defaults — NOT graph node pins\n  - set_component_properties: sets SCS component template properties — NOT graph node pins\n  - inject_blueprint_nodes_t3d: can set pin defaults at creation time via T3D DefaultValue, but CANNOT modify existing nodes\n\nPIN TYPE FORMATS:\n  bool:          \"true\" or \"false\"\n  int:           \"42\"\n  float/double:  \"3.14\"\n  string:        Raw text (no quotes). Example: ThirdPersonMap\n  name:          Raw text. Example: PlayerStart_0\n  text (FText):  Raw text — automatically wrapped via FText::FromString\n  enum:          Short entry name (e.g. \"Automatic\", not \"EFireMode::Automatic\")\n  FVector:       \"X=1.0 Y=2.0 Z=3.0\"\n  FRotator:      \"P=0.0 Y=90.0 R=0.0\"\n  FLinearColor:  \"(R=1.0,G=0.0,B=0.0,A=1.0)\"\n  FTransform:    \"Translation=(X=0,Y=0,Z=0),Rotation=(X=0,Y=0,Z=0,W=1),Scale3D=(X=1,Y=1,Z=1)\"\n  object ref:    Asset path (e.g. \"/Game/Meshes/SM_Rock.SM_Rock\") — loaded via StaticLoadObject\n  soft ref:      Asset path string (e.g. \"/Game/Maps/ThirdPersonMap.ThirdPersonMap\")\n\nWORKFLOW:\n1. Call get_blueprint_info to find the internal node name and pin names\n2. Call set_node_pin_default with the exact node_name, pin_name, and formatted value\n3. The tool validates the pin type, sets the value, and recompiles the Blueprint\n\nEXAMPLES:\n  Set a string literal:  { node_name: \"K2Node_ConvName_0\", pin_name: \"InString\", value: \"ThirdPersonMap\" }\n  Set a level name:      { node_name: \"K2Node_CallFunction_1\", pin_name: \"LevelName\", value: \"/Game/Maps/Level1\" }\n  Set a float:           { node_name: \"K2Node_CallFunction_2\", pin_name: \"Duration\", value: \"2.5\" }\n  Set an enum:           { node_name: \"K2Node_CallFunction_3\", pin_name: \"TeleportType\", value: \"None\" }\n  Set an object ref:     { node_name: \"K2Node_CallFunction_4\", pin_name: \"SoundToPlay\", value: \"/Game/Audio/SFX_Click.SFX_Click\" }",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint containing the node"
+          },
+          "node_name": {
+            "type": "string",
+            "description": "Internal node name (e.g. 'K2Node_CallFunction_0', 'K2Node_ConvName_1'). Get this from get_blueprint_info."
+          },
+          "pin_name": {
+            "type": "string",
+            "description": "Input pin name on the node (e.g. 'InString', 'LevelName', 'Duration', 'Value'). Get this from get_blueprint_info."
+          },
+          "value": {
+            "type": "string",
+            "description": "The default value to set. Format depends on pin type — see tool description for format guide."
+          },
+          "graph_name": {
+            "type": "string",
+            "description": "Name of the graph containing the node. Default: 'EventGraph'. Use the function name for function graphs."
+          }
+        },
+        "required": ["asset_path", "node_name", "pin_name", "value"]
+      }
+    },
+    {
+      "name": "delete_blueprint_nodes",
+      "description": "Delete one or more nodes from a Blueprint graph by their internal names.\n\nUse this to:\n  - Remove DUPLICATE nodes (e.g. if inject_blueprint_nodes_t3d was called twice and created redundant copies)\n  - Remove ORPHANED nodes that are disconnected and no longer needed\n  - Clean up nodes that don't belong to the current task scope\n  - Remove incorrect nodes before re-injecting corrected versions\n\nWORKFLOW:\n1. Call get_blueprint_info to see all nodes and their internal names\n2. Identify nodes to delete by their internal names (e.g. 'K2Node_CallFunction_3')\n3. Call delete_blueprint_nodes with the array of names\n4. The tool breaks all pin connections, removes the nodes, and recompiles\n\nIMPORTANT: Use internal node names (e.g. 'K2Node_Event_0'), NOT display titles.\nAlways call get_blueprint_info first to get current node names.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint (e.g. '/Game/UI/BP_MenuGameMode')"
+          },
+          "node_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of internal node names to delete (e.g. ['K2Node_CallFunction_3', 'K2Node_Event_1'])"
+          },
+          "graph_name": {
+            "type": "string",
+            "description": "Name of the graph to delete from. Default: 'EventGraph'. Use the function name for function graphs."
+          }
+        },
+        "required": ["asset_path", "node_names"]
+      }
+    }
+  ]
+}

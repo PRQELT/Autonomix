@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "diagnostics_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "read_message_log",
+      "description": "Read recent entries from the Unreal Output Log. Captures Blueprint 'Accessed None' errors, asset loading failures, C++ asserts, and other runtime messages. Use this after PIE sessions or compilation to check for issues. This is a read-only tool.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "max_lines": {
+            "type": "integer",
+            "description": "Maximum number of log entries to return (1-500, default 100)"
+          },
+          "category_filter": {
+            "type": "string",
+            "description": "Filter by log category substring (e.g., 'LogBlueprintUserMessages', 'LogScript', 'LogTemp', 'LogActor')"
+          },
+          "severity_filter": {
+            "type": "string",
+            "enum": ["Error", "Warning", "All"],
+            "description": "Filter by severity level (default: All)"
+          },
+          "clear_after_read": {
+            "type": "boolean",
+            "description": "Clear the captured log buffer after reading (default: false)"
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

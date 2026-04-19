@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "pcg_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_pcg_graph",
+      "description": "Create a new empty PCG (Procedural Content Generation) graph asset.\n\nRequires: Unreal Engine 5.2+ with the PCG plugin enabled in the .uproject file.\nProduction-ready: UE 5.7+. PCG Editor Mode is experimental — use with caution.\n\nPCG Workflow:\n1. create_pcg_graph — create the empty graph asset\n2. attach_pcg_component — assign the graph to an actor (e.g. a PCGVolume or Landscape)\n3. set_pcg_parameter — configure exposed parameters (mesh references, density, seed)\n4. generate_pcg_local — trigger generation\n5. get_pcg_info — inspect output\n\nNOTE: PCG graph node authoring (adding scatter/sample/spline/filter nodes and connecting them)\nmust be done in the PCG Editor UI. Autonomix covers the workflow of creating, assigning,\nparameterizing, and generating PCG graphs.\n\nNaming convention: PCG_ prefix (e.g. PCG_ForestBiome, PCG_RockScatter)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the PCG graph asset, e.g. /Game/PCG/PCG_ForestBiome"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+
+    {
+      "name": "attach_pcg_component",
+      "description": "Add a UPCGComponent to an actor in the current level and optionally assign a PCG graph.\n\nThe actor must already exist in the level (use spawn_actor to create it first if needed).\nFor large landscape coverage, spawn a 'Volume' actor type and place the PCGComponent on it.\n\nAfter attaching, use set_pcg_parameter to configure the graph's exposed parameters,\nthen generate_pcg_local to trigger generation.\n\nThe actor_name must match the actor's label as shown in the Outliner.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "actor_name": {
+            "type": "string",
+            "description": "Label of the actor in the current level (as shown in the Outliner). Case-sensitive."
+          },
+          "graph_path": {
+            "type": "string",
+            "description": "Content path of the PCG graph asset to assign, e.g. /Game/PCG/PCG_ForestBiome. If omitted, adds an empty PCGComponent — assign graph later."
+          }
+        },
+        "required": ["actor_name"]
+      }
+    },
+
+    {
+      "name": "set_pcg_parameter",
+      "description": "Set an exposed parameter on a PCG component's graph instance.\n\nParameters must be exposed in the PCG graph settings asset ('Expose to Component' checkbox in the PCG graph editor).\n\nCommon use cases:\n  - Set a static mesh reference: parameter_name='TreeMesh', parameter_value='/Game/Trees/SM_Pine', parameter_type='object'\n  - Set density: parameter_name='Density', parameter_value='0.15', parameter_type='float'\n  - Set random seed: parameter_name='Seed', parameter_value='1337', parameter_type='int'\n  - Set bounds: parameter_name='SpawnRadius', parameter_value='5000.0', parameter_type='float'\n\nAfter setting parameters, call generate_pcg_local to apply them.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "actor_name": {
+            "type": "string",
+            "description": "Label of the actor owning the PCG component"
+          },
+          "parameter_name": {
+            "type": "string",
+            "description": "Exact name of the exposed parameter as defined in the PCG graph"
+          },
+          "parameter_value": {
+            "type": "string",
+            "description": "String-serialized value: '0.15' for float, '1337' for int, 'true'/'false' for bool, '/Game/...' for object reference"
+          },
+          "parameter_type": {
+            "type": "string",
+            "description": "Type hint for correct serialization: 'float', 'int', 'bool', 'string', 'vector', 'object'. Default: 'string'"
+          }
+        },
+        "required": ["actor_name", "parameter_name", "parameter_value"]
+      }
+    },
+
+    {
+      "name": "generate_pcg_local",
+      "description": "Trigger local PCG generation on an actor's PCG component.\n\nCalls UPCGComponent::GenerateLocal(bForce) — equivalent to pressing 'Generate' in the editor.\nGeneration runs asynchronously. Use get_pcg_info after a moment to check output actor count.\n\nUse force=true to regenerate even if the graph state is clean (useful after parameter changes).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "actor_name": {
+            "type": "string",
+            "description": "Label of the actor with the PCG component to generate"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Force regeneration even if graph state is clean. Default: true. Always use true after parameter changes."
+          }
+        },
+        "required": ["actor_name"]
+      }
+    },
+
+    {
+      "name": "get_pcg_info",
+      "description": "Read-only query: return the PCG component state of an actor.\n\nReturns:\n  - has_pcg_component: whether the actor has a PCGComponent\n  - graph: content path of the assigned PCG graph\n  - is_generating: whether generation is currently running\n\nCall this after generate_pcg_local to verify completion. If is_generating is true,\nwait briefly and call again.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "actor_name": {
+            "type": "string",
+            "description": "Label of the actor in the current level to inspect"
+          }
+        },
+        "required": ["actor_name"]
+      }
+    }
+  ]
+}

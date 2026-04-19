@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "pie_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "start_pie_session",
+      "description": "Launch a Play-In-Editor (PIE) session to test gameplay. Requires Developer security mode. After starting, use read_message_log to check for runtime errors, simulate_input to interact, and stop_pie_session to end.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "start_mode": {
+            "type": "string",
+            "enum": ["default_player_start", "current_camera"],
+            "description": "Where to start the player (default: default_player_start)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "simulate_input",
+      "description": "Inject keyboard or gamepad input during an active PIE session. Use to test movement, abilities, and interactions. Common keys: W/A/S/D for movement, SpaceBar for jump, LeftShift for sprint, E for interact.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "UE key name: 'W', 'A', 'S', 'D', 'SpaceBar', 'LeftShift', 'E', 'F', 'LeftMouseButton', 'RightMouseButton', 'Gamepad_FaceButton_Bottom' (A/Cross), etc."
+          },
+          "action_type": {
+            "type": "string",
+            "enum": ["press", "down", "up"],
+            "description": "'press' = tap (down+up in one frame), 'down' = hold, 'up' = release (default: press)"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Duration to hold the key in seconds (0-10). Note: for sustained input, use 'down' then 'up' in separate calls."
+          }
+        },
+        "required": ["key"]
+      }
+    },
+    {
+      "name": "stop_pie_session",
+      "description": "Stop the current Play-In-Editor session. After stopping, use read_message_log to review any runtime errors that occurred during play.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ]
+}

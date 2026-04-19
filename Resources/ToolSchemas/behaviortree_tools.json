@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "behaviortree_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "create_blackboard",
+      "description": "Create a Blackboard Data asset with typed keys. Blackboards are the shared memory for Behavior Trees — NPCs use them to store perception data, target references, patrol points, and state flags.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path (e.g., '/Game/AI/BB_Enemy')"
+          },
+          "keys": {
+            "type": "array",
+            "description": "Array of Blackboard key definitions",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Key name (e.g., 'TargetActor', 'PatrolLocation', 'IsAlerted')"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["Bool", "Int", "Float", "String", "Name", "Vector", "Rotator", "Object", "Class", "Enum"],
+                  "description": "Key value type"
+                }
+              },
+              "required": ["name", "type"]
+            }
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "create_behavior_tree",
+      "description": "Create a Behavior Tree asset and optionally assign a Blackboard. Behavior Trees define NPC decision-making logic using Composites (Selector, Sequence), Tasks, Decorators, and Services.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path (e.g., '/Game/AI/BT_EnemyAI')"
+          },
+          "blackboard_asset": {
+            "type": "string",
+            "description": "Content path of the Blackboard to assign (e.g., '/Game/AI/BB_Enemy')"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "inject_bt_nodes",
+      "description": "Add nodes to an existing Behavior Tree. Supports composite nodes (Selector, Sequence, Parallel) and task nodes (Wait, MoveTo). The first composite becomes the root if none exists; subsequent nodes are added as children of the root.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Behavior Tree"
+          },
+          "nodes": {
+            "type": "array",
+            "description": "Array of node definitions to inject",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["Selector", "Sequence", "Parallel", "Wait", "MoveTo"],
+                  "description": "Node type"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name for the node"
+                },
+                "wait_time": {
+                  "type": "number",
+                  "description": "For Wait nodes: duration in seconds"
+                },
+                "acceptable_radius": {
+                  "type": "number",
+                  "description": "For MoveTo nodes: arrival acceptance radius in UU"
+                }
+              },
+              "required": ["type"]
+            }
+          }
+        },
+        "required": ["asset_path", "nodes"]
+      }
+    },
+    {
+      "name": "configure_navmesh",
+      "description": "Set up navigation mesh for AI pathfinding. Spawns a NavMeshBoundsVolume in the current level (if one doesn't exist) and triggers a NavMesh rebuild. Required for any MoveTo-based AI behavior.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "object",
+            "description": "Center of the NavMesh volume",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "scale": {
+            "type": "object",
+            "description": "Scale of the volume (each unit ≈ 200 UU, so 50 = ~100m). Default: (50, 50, 10)",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "rebuild": {
+            "type": "boolean",
+            "description": "Whether to trigger NavMesh rebuild immediately (default: true)"
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

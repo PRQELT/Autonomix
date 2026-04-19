@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "cpp_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_cpp_class",
+      "description": "Create a new C++ class with header and implementation files. Validates code safety before writing. WARNING: If the header contains UCLASS/USTRUCT macros, Live Coding cannot compile it \u2014 editor restart required.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "Class name without prefix (e.g. MyPlayerController)"
+          },
+          "header_code": {
+            "type": "string",
+            "description": "Full content of the .h file including #pragma once, includes, UCLASS macro"
+          },
+          "cpp_code": {
+            "type": "string",
+            "description": "Full content of the .cpp file"
+          },
+          "subdirectory": {
+            "type": "string",
+            "description": "Optional subdirectory within Public/Private (e.g. Characters)"
+          },
+          "auto_compile": {
+            "type": "boolean",
+            "description": "Trigger Live Coding after writing. Only works for .cpp-only changes."
+          }
+        },
+        "required": [
+          "class_name",
+          "header_code"
+        ]
+      }
+    },
+    {
+      "name": "modify_cpp_file",
+      "description": "Modify an existing C++ source file. The entire file content must be provided.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Absolute path to the .h or .cpp file"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full new content of the file"
+          }
+        },
+        "required": [
+          "file_path",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "trigger_compile",
+      "description": "Trigger Live Coding compilation. Only works for .cpp implementation changes, not structural header changes.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "compile": {
+            "type": "boolean",
+            "description": "Must be true"
+          }
+        },
+        "required": [
+          "compile"
+        ]
+      }
+    },
+    {
+      "name": "regenerate_project_files",
+      "description": "Regenerate Visual Studio/Rider project files after adding new source files.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "regenerate_project": {
+            "type": "boolean",
+            "description": "Must be true"
+          }
+        },
+        "required": [
+          "regenerate_project"
+        ]
+      }
+    }
+  ]
+}

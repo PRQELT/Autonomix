@@ -1,0 +1,1025 @@
+// Copyright Autonomix. All Rights Reserved.
+
+#include "AutonomixToolSchemaRegistry.h"
+#include "AutonomixCoreModule.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "HAL/PlatformFileManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+
+FAutonomixToolSchemaRegistry::FAutonomixToolSchemaRegistry()
+{
+}
+
+FAutonomixToolSchemaRegistry::~FAutonomixToolSchemaRegistry()
+{
+}
+
+FString FAutonomixToolSchemaRegistry::GetSchemasDirectory() const
+{
+	FString PluginBaseDir = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("Autonomix"));
+	FString SchemasDir = FPaths::Combine(PluginBaseDir, TEXT("Resources"), TEXT("ToolSchemas"));
+
+	if (!FPaths::DirectoryExists(SchemasDir))
+	{
+		PluginBaseDir = FPaths::Combine(FPaths::EnginePluginsDir(), TEXT("Autonomix"));
+		SchemasDir = FPaths::Combine(PluginBaseDir, TEXT("Resources"), TEXT("ToolSchemas"));
+	}
+
+	return SchemasDir;
+}
+
+void FAutonomixToolSchemaRegistry::LoadAllSchemas()
+{
+	FString SchemasDir = GetSchemasDirectory();
+
+	if (!FPaths::DirectoryExists(SchemasDir))
+	{
+		UE_LOG(LogAutonomix, Warning, TEXT("ToolSchemaRegistry: Schemas directory not found: %s"), *SchemasDir);
+		return;
+	}
+
+	TArray<FString> SchemaFiles;
+	IFileManager::Get().FindFiles(SchemaFiles, *FPaths::Combine(SchemasDir, TEXT("*.json")), true, false);
+
+	for (const FString& FileName : SchemaFiles)
+	{
+		FString FullPath = FPaths::Combine(SchemasDir, FileName);
+		LoadSchemaFile(FullPath);
+	}
+
+	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: Loaded %d tool schemas from %d files."),
+		ToolSchemas.Num(), SchemaFiles.Num());
+}
+
+bool FAutonomixToolSchemaRegistry::LoadSchemaFile(const FString& FilePath)
+{
+	FString FileContent;
+	if (!FFileHelper::LoadFileToString(FileContent, *FilePath))
+	{
+		UE_LOG(LogAutonomix, Error, TEXT("ToolSchemaRegistry: Failed to read file: %s"), *FilePath);
+		return false;
+	}
+
+	// Try parsing as a JSON object first (versioned envelope format)
+	TSharedPtr<FJsonObject> RootObj;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
+	if (FJsonSerializer::Deserialize(Reader, RootObj) && RootObj.IsValid())
+	{
+		// Check if this is a versioned schema envelope
+		FString SchemaVersion;
+		if (RootObj->TryGetStringField(TEXT("schema_version"), SchemaVersion))
+		{
+			// Versioned format: { "schema_version": "1.0.0", "domain": "...", "tools": [...] }
+			FString Domain;
+			RootObj->TryGetStringField(TEXT("domain"), Domain);
+
+			const TArray<TSharedPtr<FJsonValue>>* ToolsArray = nullptr;
+			if (RootObj->TryGetArrayField(TEXT("tools"), ToolsArray))
+			{
+				for (const TSharedPtr<FJsonValue>& ToolValue : *ToolsArray)
+				{
+					const TSharedPtr<FJsonObject>* ToolObj = nullptr;
+					if (ToolValue->TryGetObject(ToolObj) && ToolObj->IsValid())
+					{
+						FString ToolName;
+						if ((*ToolObj)->TryGetStringField(TEXT("name"), ToolName))
+						{
+							ToolSchemas.Add(ToolName, *ToolObj);
+						}
+					}
+				}
+
+				UE_LOG(LogAutonomix, Verbose, TEXT("ToolSchemaRegistry: Loaded %s v%s (%d tools)"),
+					*Domain, *SchemaVersion, ToolsArray->Num());
+				return true;
+			}
+		}
+
+		// Single tool object (non-versioned, non-array)
+		FString ToolName;
+		if (RootObj->TryGetStringField(TEXT("name"), ToolName))
+		{
+			ToolSchemas.Add(ToolName, RootObj);
+			return true;
+		}
+	}
+
+	// Try parsing as a raw JSON array (legacy format: [tool, tool, ...])
+	TArray<TSharedPtr<FJsonValue>> ToolsArray;
+	Reader = TJsonReaderFactory<>::Create(FileContent);
+	if (FJsonSerializer::Deserialize(Reader, ToolsArray))
+	{
+		for (const TSharedPtr<FJsonValue>& ToolValue : ToolsArray)
+		{
+			const TSharedPtr<FJsonObject>* ToolObj = nullptr;
+			if (ToolValue->TryGetObject(ToolObj) && ToolObj->IsValid())
+			{
+				FString ToolName;
+				if ((*ToolObj)->TryGetStringField(TEXT("name"), ToolName))
+				{
+					ToolSchemas.Add(ToolName, *ToolObj);
+				}
+			}
+		}
+		return true;
+	}
+
+	UE_LOG(LogAutonomix, Error, TEXT("ToolSchemaRegistry: Failed to parse schema file: %s"), *FilePath);
+	return false;
+}
+
+/** Maximum characters for a tool's top-level description in schemas sent to the LLM.
+ *  Long descriptions waste tokens without improving tool selection.
+ *  ~200 chars = ~50 tokens per tool. At 93 tools = ~4,650 tokens for descriptions.
+ *  Without truncation: ~35,000 tokens. Savings: ~86%. */
+static constexpr int32 MaxDescriptionChars = 200;
+
+/** Maximum characters for individual property descriptions within input_schema.
+ *  Property descriptions like "Component class name (without U prefix): StaticMeshComponent,
+ *  SkeletalMeshComponent, BoxComponent, SphereComponent, CapsuleComponent, ..." are verbose.
+ *  The AI has seen these patterns during training — it doesn't need full enumerations.
+ *  ~80 chars = ~20 tokens per property. Typical tool has 3-8 properties. */
+static constexpr int32 MaxPropertyDescriptionChars = 80;
+
+/** Truncate a description string to fit within the given character budget */
+static FString TruncateDescriptionAt(const FString& Desc, int32 MaxChars)
+{
+	if (Desc.Len() <= MaxChars)
+	{
+		return Desc;
+	}
+	// Truncate at a word boundary near the limit
+	int32 CutPos = MaxChars;
+	while (CutPos > 0 && Desc[CutPos] != TEXT(' '))
+	{
+		CutPos--;
+	}
+	if (CutPos == 0) CutPos = MaxChars;
+	return Desc.Left(CutPos) + TEXT("...");
+}
+
+static FString TruncateDescription(const FString& Desc)
+{
+	return TruncateDescriptionAt(Desc, MaxDescriptionChars);
+}
+
+/**
+ * Recursively truncate description fields within a JSON object (input_schema properties).
+ * Only clones objects that need modification — returns original pointer if no changes needed.
+ */
+static TSharedPtr<FJsonObject> TruncatePropertyDescriptions(const TSharedPtr<FJsonObject>& Obj)
+{
+	if (!Obj.IsValid()) return Obj;
+
+	bool bNeedsClone = false;
+
+	// Check if this object has a "description" field that needs truncation
+	FString Desc;
+	if (Obj->TryGetStringField(TEXT("description"), Desc) && Desc.Len() > MaxPropertyDescriptionChars)
+	{
+		bNeedsClone = true;
+	}
+
+	// Check "properties" sub-object (input_schema.properties.{param}.description)
+	const TSharedPtr<FJsonObject>* PropertiesObj = nullptr;
+	if (Obj->TryGetObjectField(TEXT("properties"), PropertiesObj) && PropertiesObj->IsValid())
+	{
+		for (const auto& PropPair : (*PropertiesObj)->Values)
+		{
+			const TSharedPtr<FJsonObject>* PropObj = nullptr;
+			if (PropPair.Value->TryGetObject(PropObj) && PropObj->IsValid())
+			{
+				FString PropDesc;
+				if ((*PropObj)->TryGetStringField(TEXT("description"), PropDesc) && PropDesc.Len() > MaxPropertyDescriptionChars)
+				{
+					bNeedsClone = true;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!bNeedsClone) return Obj;
+
+	// Deep clone with truncation
+	TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
+	for (const auto& Pair : Obj->Values)
+	{
+		if (Pair.Key == TEXT("description"))
+		{
+			FString DescValue;
+			if (Pair.Value->TryGetString(DescValue))
+			{
+				Clone->SetStringField(TEXT("description"), TruncateDescriptionAt(DescValue, MaxPropertyDescriptionChars));
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else if (Pair.Key == TEXT("properties"))
+		{
+			const TSharedPtr<FJsonObject>* OrigProps = nullptr;
+			if (Pair.Value->TryGetObject(OrigProps) && OrigProps->IsValid())
+			{
+				TSharedPtr<FJsonObject> ClonedProps = MakeShared<FJsonObject>();
+				for (const auto& PropPair : (*OrigProps)->Values)
+				{
+					const TSharedPtr<FJsonObject>* PropObj = nullptr;
+					if (PropPair.Value->TryGetObject(PropObj) && PropObj->IsValid())
+					{
+						ClonedProps->SetObjectField(PropPair.Key, TruncatePropertyDescriptions(*PropObj));
+					}
+					else
+					{
+						ClonedProps->SetField(PropPair.Key, PropPair.Value);
+					}
+				}
+				Clone->SetObjectField(TEXT("properties"), ClonedProps);
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else if (Pair.Key == TEXT("items"))
+		{
+			// Handle array items (e.g., "components": { "items": { "properties": {...} } })
+			const TSharedPtr<FJsonObject>* ItemsObj = nullptr;
+			if (Pair.Value->TryGetObject(ItemsObj) && ItemsObj->IsValid())
+			{
+				Clone->SetObjectField(TEXT("items"), TruncatePropertyDescriptions(*ItemsObj));
+			}
+			else
+			{
+				Clone->SetField(Pair.Key, Pair.Value);
+			}
+		}
+		else
+		{
+			Clone->SetField(Pair.Key, Pair.Value);
+		}
+	}
+	return Clone;
+}
+
+/** Create a lightweight clone of a schema with truncated descriptions.
+ *  Truncates both the top-level description AND nested input_schema property descriptions.
+ *  Only clones when truncation is needed — returns original pointer otherwise. */
+static TSharedPtr<FJsonObject> MakeTruncatedSchema(const TSharedPtr<FJsonObject>& Original)
+{
+	if (!Original.IsValid()) return Original;
+
+	bool bNeedsTopLevelTruncation = false;
+	FString Desc;
+	if (Original->TryGetStringField(TEXT("description"), Desc) && Desc.Len() > MaxDescriptionChars)
+	{
+		bNeedsTopLevelTruncation = true;
+	}
+
+	// Truncate input_schema property descriptions
+	const TSharedPtr<FJsonObject>* InputSchemaObj = nullptr;
+	TSharedPtr<FJsonObject> TruncatedInputSchema;
+	bool bInputSchemaChanged = false;
+	if (Original->TryGetObjectField(TEXT("input_schema"), InputSchemaObj) && InputSchemaObj->IsValid())
+	{
+		TruncatedInputSchema = TruncatePropertyDescriptions(*InputSchemaObj);
+		bInputSchemaChanged = (TruncatedInputSchema.Get() != InputSchemaObj->Get());
+	}
+
+	if (!bNeedsTopLevelTruncation && !bInputSchemaChanged)
+	{
+		return Original;  // No truncation needed at any level
+	}
+
+	// Clone the top-level schema
+	TSharedPtr<FJsonObject> Clone = MakeShared<FJsonObject>();
+	for (const auto& Pair : Original->Values)
+	{
+		Clone->SetField(Pair.Key, Pair.Value);
+	}
+	if (bNeedsTopLevelTruncation)
+	{
+		Clone->SetStringField(TEXT("description"), TruncateDescription(Desc));
+	}
+	if (bInputSchemaChanged && TruncatedInputSchema.IsValid())
+	{
+		Clone->SetObjectField(TEXT("input_schema"), TruncatedInputSchema);
+	}
+	return Clone;
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetAllSchemas() const
+{
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		Result.Add(MakeTruncatedSchema(Pair.Value));
+	}
+	return Result;
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetSchemasByCategory(const FString& Category) const
+{
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		FString SchemaCategory;
+		if (Pair.Value->TryGetStringField(TEXT("category"), SchemaCategory) && SchemaCategory == Category)
+		{
+			Result.Add(Pair.Value);
+		}
+	}
+	return Result;
+}
+
+TSharedPtr<FJsonObject> FAutonomixToolSchemaRegistry::GetSchemaByName(const FString& ToolName) const
+{
+	const TSharedPtr<FJsonObject>* Found = ToolSchemas.Find(ToolName);
+	return Found ? *Found : nullptr;
+}
+
+bool FAutonomixToolSchemaRegistry::IsToolRegistered(const FString& ToolName) const
+{
+	return ToolSchemas.Contains(ToolName);
+}
+
+TArray<FString> FAutonomixToolSchemaRegistry::GetAllToolNames() const
+{
+	TArray<FString> Names;
+	ToolSchemas.GetKeys(Names);
+	return Names;
+}
+
+void FAutonomixToolSchemaRegistry::SetToolEnabled(const FString& ToolName, bool bEnabled)
+{
+	if (bEnabled)
+	{
+		DisabledTools.Remove(ToolName);
+	}
+	else
+	{
+		DisabledTools.Add(ToolName);
+	}
+}
+
+bool FAutonomixToolSchemaRegistry::IsToolEnabled(const FString& ToolName) const
+{
+	return !DisabledTools.Contains(ToolName);
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEnabledSchemas() const
+{
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (!DisabledTools.Contains(Pair.Key))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+	return Result;
+}
+
+void FAutonomixToolSchemaRegistry::SyncWithRegisteredTools(const TArray<FString>& RegisteredToolNames)
+{
+	// Build a set for O(1) lookups
+	TSet<FString> RegisteredSet;
+	for (const FString& Name : RegisteredToolNames)
+	{
+		RegisteredSet.Add(Name);
+	}
+
+	// Meta-tools are always available even without an executor (they are handled
+	// by the main panel directly, not through the ActionRouter)
+	const TArray<FString>& AlwaysAvailable = GetAlwaysAvailableTools();
+
+	int32 DisabledCount = 0;
+	for (const auto& Pair : ToolSchemas)
+	{
+		const FString& ToolName = Pair.Key;
+
+		// Skip meta-tools — they're handled outside the executor pipeline
+		if (AlwaysAvailable.Contains(ToolName))
+		{
+			continue;
+		}
+
+		if (!RegisteredSet.Contains(ToolName))
+		{
+			// This schema has no executor registered — disable it so the LLM won't see it
+			DisabledTools.Add(ToolName);
+			++DisabledCount;
+		}
+		else
+		{
+			// Executor exists — make sure it's not disabled by a previous sync
+			DisabledTools.Remove(ToolName);
+		}
+	}
+
+	if (DisabledCount > 0)
+	{
+		UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: SyncWithRegisteredTools disabled %d schemas with no registered executor."), DisabledCount);
+	}
+}
+
+// ============================================================================
+// Mode-based filtering (v2.0)
+// ============================================================================
+
+const TArray<FString>& FAutonomixToolSchemaRegistry::GetAlwaysAvailableTools()
+{
+	static TArray<FString> Always = {
+		TEXT("update_todo_list"),
+		TEXT("switch_mode"),
+		TEXT("attempt_completion"),
+		TEXT("ask_followup_question"),
+		TEXT("new_task"),
+		TEXT("get_tool_info"),
+		TEXT("list_tools_in_category"),
+	};
+	return Always;
+}
+
+TArray<FString> FAutonomixToolSchemaRegistry::GetAllowedToolNamesForMode(EAutonomixAgentMode Mode)
+{
+	// These are substring/prefix patterns — a tool is allowed if its name CONTAINS one of these
+	switch (Mode)
+	{
+	case EAutonomixAgentMode::Orchestrator:
+		// Orchestrator: read tools + new_task + switch_mode (no direct write tools)
+		return {
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("get_asset"),
+			TEXT("find_asset"),
+			TEXT("get_class"),
+			TEXT("get_context"),
+		};
+
+	case EAutonomixAgentMode::General:
+		// All tools
+		return {};  // Empty = allow all
+
+	case EAutonomixAgentMode::Blueprint:
+		return {
+			TEXT("blueprint"),
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("get_asset"),
+			TEXT("find_asset"),
+		};
+
+	case EAutonomixAgentMode::CppCode:
+		return {
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("write_file"),
+			TEXT("create_file"),
+			TEXT("apply_diff"),
+			TEXT("edit_file"),
+			TEXT("cpp"),
+			TEXT("build"),
+			TEXT("compile"),
+			TEXT("generate"),
+		};
+
+	case EAutonomixAgentMode::Architect:
+		// Read-only: no write/execute tools
+		return {
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("get_asset"),
+			TEXT("find_asset"),
+			TEXT("get_class"),
+			TEXT("get_context"),
+		};
+
+	case EAutonomixAgentMode::Debug:
+		return {
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("execute"),
+			TEXT("run"),
+			TEXT("build"),
+			TEXT("compile"),
+			TEXT("get_log"),
+			TEXT("get_error"),
+		};
+
+	case EAutonomixAgentMode::Asset:
+		return {
+			TEXT("read_file"),
+			TEXT("get_file"),
+			TEXT("list_files"),
+			TEXT("search_files"),
+			TEXT("material"),
+			TEXT("texture"),
+			TEXT("mesh"),
+			TEXT("audio"),
+			TEXT("animation"),
+			TEXT("asset"),
+			TEXT("import"),
+		};
+	}
+
+	return {};
+}
+
+TSet<FString> FAutonomixToolSchemaRegistry::GetAllowedCategoriesForMode(EAutonomixAgentMode Mode) const
+{
+	switch (Mode)
+	{
+	case EAutonomixAgentMode::General:
+		return {};  // All categories
+
+	case EAutonomixAgentMode::Blueprint:
+		return { TEXT("Blueprint"), TEXT("General"), TEXT("FileSystem") };
+
+	case EAutonomixAgentMode::CppCode:
+		return { TEXT("Cpp"), TEXT("Build"), TEXT("General"), TEXT("FileSystem") };
+
+	case EAutonomixAgentMode::Architect:
+		return { TEXT("General"), TEXT("FileSystem") };  // Read-only subset
+
+	case EAutonomixAgentMode::Debug:
+		return { TEXT("Build"), TEXT("General"), TEXT("FileSystem") };
+
+	case EAutonomixAgentMode::Asset:
+		return { TEXT("Material"), TEXT("Mesh"), TEXT("Texture"), TEXT("Audio"), TEXT("Animation"), TEXT("FileSystem"), TEXT("General") };
+
+	case EAutonomixAgentMode::Orchestrator:
+		return { TEXT("General"), TEXT("FileSystem") };  // Read-only — delegates work via new_task
+	}
+
+	return {};
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetSchemasForMode(EAutonomixAgentMode Mode) const
+{
+	// General mode = all enabled schemas
+	if (Mode == EAutonomixAgentMode::General)
+	{
+		return GetEnabledSchemas();
+	}
+
+	const TArray<FString>& AlwaysAvailable = GetAlwaysAvailableTools();
+	const TArray<FString> AllowedPatterns = GetAllowedToolNamesForMode(Mode);
+
+	TArray<TSharedPtr<FJsonObject>> Result;
+
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		const FString& ToolName = Pair.Key;
+
+		// Always-available tools are included in every mode
+		if (AlwaysAvailable.Contains(ToolName))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+			continue;
+		}
+
+		// Check if tool name matches any of the mode's allowed patterns
+		bool bAllowed = false;
+		for (const FString& Pattern : AllowedPatterns)
+		{
+			if (ToolName.Contains(Pattern, ESearchCase::IgnoreCase))
+			{
+				bAllowed = true;
+				break;
+			}
+		}
+
+		if (bAllowed)
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::GetModeRoleDefinition(EAutonomixAgentMode Mode)
+{
+	switch (Mode)
+	{
+	case EAutonomixAgentMode::General:
+		return TEXT(
+			"You are Autonomix, an AI assistant for Unreal Engine development. "
+			"You have access to all available tools and can help with any aspect of UE development: "
+			"C++ code, Blueprints, materials, levels, assets, builds, and project configuration."
+		);
+
+	case EAutonomixAgentMode::Blueprint:
+		return TEXT(
+			"You are Autonomix in Blueprint mode. Your role is to design and implement Blueprint logic. "
+			"You can read any file and create/modify Blueprints. "
+			"You do NOT have access to C++ write tools in this mode — use switch_mode to change to C++ Code mode if needed. "
+			"Focus on visual scripting, event graphs, and Blueprint communication patterns."
+		);
+
+	case EAutonomixAgentMode::CppCode:
+		return TEXT(
+			"You are Autonomix in C++ Code mode. Your role is to write, modify, and compile Unreal Engine C++ code. "
+			"You can read and write source files, apply diffs, and run builds. "
+			"You do NOT have access to Blueprint or asset tools in this mode. "
+			"Follow UE coding conventions: UCLASS, UPROPERTY, UFUNCTION macros; header/source split; "
+			"FString/TArray/TMap over std:: types; check() and ensure() over assert()."
+		);
+
+	case EAutonomixAgentMode::Architect:
+		return TEXT(
+			"You are Autonomix in Architect mode. Your role is to analyze, plan, and explain — NOT to make changes. "
+			"You have READ-ONLY access to the codebase. You cannot write, create, or modify any files. "
+			"Use this mode to: review code, design systems, identify issues, plan refactoring, "
+			"explain architecture, and generate recommendations. "
+			"When you have a plan ready, use switch_mode to hand off to the appropriate implementation mode."
+		);
+
+	case EAutonomixAgentMode::Debug:
+		return TEXT(
+			"You are Autonomix in Debug mode. Your role is to diagnose and fix issues. "
+			"You can read files, run builds, and execute diagnostic commands. "
+			"You do NOT have access to create or modify source files directly — "
+			"use switch_mode to C++ Code or Blueprint mode to apply fixes. "
+			"Focus on: reading error messages, tracing call stacks, understanding crash reports, "
+			"and identifying the root cause before proposing solutions."
+		);
+
+	case EAutonomixAgentMode::Asset:
+		return TEXT(
+			"You are Autonomix in Asset mode. Your role is to work with Unreal Engine assets: "
+			"materials, textures, meshes, audio, and animations. "
+			"You do NOT have access to C++ or Blueprint code tools in this mode. "
+			"Focus on asset creation, modification, organization, and import workflows."
+		);
+
+	case EAutonomixAgentMode::Orchestrator:
+		return TEXT(
+			"You are Autonomix in Orchestrator mode. Your role is to coordinate complex, "
+			"multi-step Unreal Engine projects by breaking them into focused sub-tasks "
+			"and delegating each to the appropriate specialist mode.\n\n"
+			"You have access to READ tools and the new_task tool. You do NOT have direct write access.\n\n"
+			"Your workflow:\n"
+			"1. Analyze the user's request and identify all sub-tasks\n"
+			"2. Use new_task to delegate C++ work to cpp_code mode\n"
+			"3. Use new_task to delegate Blueprint work to blueprint mode\n"
+			"4. Use new_task to delegate asset work to asset mode\n"
+			"5. Use new_task to delegate debugging to debug mode\n"
+			"6. Monitor progress and coordinate between sub-tasks\n"
+			"7. Use attempt_completion when all sub-tasks are complete\n\n"
+			"Think of yourself as a technical project manager who delegates implementation "
+			"to specialist agents while maintaining overall project coherence."
+		);
+	}
+
+	return TEXT("You are Autonomix, an AI assistant for Unreal Engine development.");
+}
+
+FString FAutonomixToolSchemaRegistry::GetModeDisplayName(EAutonomixAgentMode Mode)
+{
+	switch (Mode)
+	{
+	case EAutonomixAgentMode::General:      return TEXT("General");
+	case EAutonomixAgentMode::Blueprint:    return TEXT("Blueprint");
+	case EAutonomixAgentMode::CppCode:      return TEXT("C++ Code");
+	case EAutonomixAgentMode::Architect:    return TEXT("Architect");
+	case EAutonomixAgentMode::Debug:        return TEXT("Debug");
+	case EAutonomixAgentMode::Asset:        return TEXT("Asset");
+	case EAutonomixAgentMode::Orchestrator: return TEXT("Orchestrator");
+	}
+	return TEXT("General");
+}
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEssentialSchemas() const
+{
+	// =========================================================================
+	// Essential tool set for local providers (Ollama, LM Studio).
+	//
+	// Local models with 8K-64K context windows cannot handle 90+ tool schemas.
+	// The full schema set alone = ~5,000 tokens (post-truncation); with project
+	// context and system prompt, this easily exceeds the model's capacity.
+	//
+	// Symptoms when overloaded:
+	//   - "I currently do not have the capability to create files"
+	//   - "I can't access your files or personal data"
+	//   - Model ignores tools entirely and responds with plain text
+	//
+	// This method returns only the ~15 core tools needed for useful work.
+	// Token cost: ~750 tokens (vs ~5,000 for full set, ~35K for untruncated).
+	//
+	// CRITICAL: Tool names here MUST exactly match the "name" field in the
+	// corresponding Resources/ToolSchemas/*.json files. Any mismatch means
+	// the tool won't be found in ToolSchemas and the model gets 0 tools.
+	// (Fix for GitHub Issue #20 — "AI has no access to the necessary tools")
+	// =========================================================================
+	static const TSet<FString> EssentialToolNames = {
+		// File/context operations (actual names from context_tools.json)
+		TEXT("read_file_snippet"),
+		TEXT("list_directory"),
+		TEXT("search_assets"),
+
+		// C++ file operations (actual names from cpp_tools.json)
+		TEXT("create_cpp_class"),
+		TEXT("modify_cpp_file"),
+		TEXT("trigger_compile"),
+
+		// Asset/context queries (actual names from blueprint_tools.json)
+		TEXT("get_blueprint_info"),
+
+		// Blueprint basics (most common UE task)
+		TEXT("inject_blueprint_nodes_t3d"),
+		TEXT("connect_blueprint_pins"),
+
+		// Meta-tools (actual names from meta_tools.json + task_tools.json)
+		TEXT("attempt_completion"),
+		TEXT("ask_followup_question"),
+		TEXT("update_todo_list"),
+		TEXT("switch_mode"),
+		TEXT("new_task"),
+	};
+
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		if (EssentialToolNames.Contains(Pair.Key))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+
+	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: GetEssentialSchemas() returned %d tools (from %d total)."),
+		Result.Num(), ToolSchemas.Num());
+
+	return Result;
+}
+
+// ============================================================================
+// Phase 3: Two-Tier Tool System — On-Demand Tool Loading
+// ============================================================================
+
+TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetTier1Schemas() const
+{
+	// Tier 1: Always-loaded tools (~15 tools, ~1,500 tokens)
+	// These are the core tools the AI needs for basic operation plus
+	// two discovery tools (get_tool_info, list_tools_in_category) to load
+	// domain-specific tools on demand.
+	// CRITICAL: Tool names here MUST exactly match the "name" field in the
+	// corresponding Resources/ToolSchemas/*.json files. Any mismatch means
+	// the tool won't be found in ToolSchemas and the model gets fewer tools.
+	// (Fix for GitHub Issue #20 — "AI has no access to the necessary tools")
+	static const TSet<FString> Tier1ToolNames = {
+		// File/context operations (actual names from context_tools.json)
+		TEXT("read_file_snippet"),
+		TEXT("list_directory"),
+		TEXT("search_assets"),
+
+		// C++ file operations (actual names from cpp_tools.json)
+		TEXT("create_cpp_class"),
+		TEXT("modify_cpp_file"),
+		TEXT("trigger_compile"),
+
+		// Asset/context queries (actual names from blueprint_tools.json)
+		TEXT("get_blueprint_info"),
+
+		// Blueprint basics (most common UE task)
+		TEXT("inject_blueprint_nodes_t3d"),
+		TEXT("connect_blueprint_pins"),
+
+		// Meta-tools (actual names from meta_tools.json + task_tools.json)
+		TEXT("attempt_completion"),
+		TEXT("ask_followup_question"),
+		TEXT("update_todo_list"),
+		TEXT("switch_mode"),
+		TEXT("new_task"),
+
+		// Discovery tools (Phase 3 — on-demand loading, from discovery_tools.json)
+		TEXT("get_tool_info"),
+		TEXT("list_tools_in_category"),
+	};
+
+	TArray<TSharedPtr<FJsonObject>> Result;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		if (Tier1ToolNames.Contains(Pair.Key))
+		{
+			Result.Add(MakeTruncatedSchema(Pair.Value));
+		}
+	}
+
+	UE_LOG(LogAutonomix, Log, TEXT("ToolSchemaRegistry: GetTier1Schemas() returned %d tools (from %d total). ~%d tokens saved vs full set."),
+		Result.Num(), ToolSchemas.Num(), (ToolSchemas.Num() - Result.Num()) * 60);
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::GetToolInfoString(const FString& ToolName) const
+{
+	TSharedPtr<FJsonObject> Schema = GetSchemaByName(ToolName);
+	if (!Schema.IsValid())
+	{
+		// Fuzzy match: try to find tools containing the query
+		TArray<FString> Suggestions;
+		for (const auto& Pair : ToolSchemas)
+		{
+			if (Pair.Key.Contains(ToolName, ESearchCase::IgnoreCase))
+			{
+				Suggestions.Add(Pair.Key);
+			}
+		}
+
+		if (Suggestions.Num() > 0)
+		{
+			FString SuggestionList;
+			for (const FString& S : Suggestions) { SuggestionList += TEXT("  - ") + S + TEXT("\n"); }
+			return FString::Printf(TEXT("Tool '%s' not found. Did you mean:\n%s"), *ToolName, *SuggestionList);
+		}
+		return FString::Printf(TEXT("Tool '%s' not found. Use list_tools_in_category to discover available tools."), *ToolName);
+	}
+
+	// Serialize the full schema (NO truncation — this is the on-demand load)
+	FString SchemaStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&SchemaStr);
+	FJsonSerializer::Serialize(Schema.ToSharedRef(), Writer);
+
+	FString Result;
+	Result += FString::Printf(TEXT("=== TOOL SCHEMA: %s ===\n"), *ToolName);
+	Result += SchemaStr;
+
+	// Find related tools in the same category
+	FString ToolPrefix;
+	int32 UnderscoreIdx = INDEX_NONE;
+	if (ToolName.FindLastChar(TEXT('_'), UnderscoreIdx) && UnderscoreIdx > 0)
+	{
+		// Try common prefixes like "blueprint", "material", "animation"
+		for (const FString& Prefix : { TEXT("blueprint"), TEXT("material"), TEXT("mesh"), TEXT("animation"),
+			TEXT("widget"), TEXT("pcg"), TEXT("input"), TEXT("performance"), TEXT("sequencer"),
+			TEXT("gas"), TEXT("behavior"), TEXT("pie"), TEXT("cpp"), TEXT("build"), TEXT("settings") })
+		{
+			if (ToolName.Contains(Prefix, ESearchCase::IgnoreCase))
+			{
+				ToolPrefix = Prefix;
+				break;
+			}
+		}
+	}
+
+	if (!ToolPrefix.IsEmpty())
+	{
+		Result += TEXT("\n\nRelated tools:\n");
+		int32 Count = 0;
+		for (const auto& Pair : ToolSchemas)
+		{
+			if (Pair.Key == ToolName) continue;
+			if (DisabledTools.Contains(Pair.Key)) continue;
+			if (Pair.Key.Contains(ToolPrefix, ESearchCase::IgnoreCase))
+			{
+				FString Desc;
+				Pair.Value->TryGetStringField(TEXT("description"), Desc);
+				// First sentence only
+				int32 DotIdx = INDEX_NONE;
+				if (Desc.FindChar(TEXT('.'), DotIdx)) Desc = Desc.Left(DotIdx + 1);
+				Result += FString::Printf(TEXT("  - %s: %s\n"), *Pair.Key, *Desc);
+				if (++Count >= 10) break;
+			}
+		}
+	}
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::ListToolsInCategoryString(const FString& Category) const
+{
+	// Map user-friendly category names to tool name patterns
+	static const TMap<FString, TArray<FString>> CategoryPatterns = {
+		{ TEXT("blueprint"),   { TEXT("blueprint"), TEXT("inject"), TEXT("connect_blueprint"), TEXT("compile_blueprint") } },
+		{ TEXT("cpp"),         { TEXT("cpp"), TEXT("create_cpp"), TEXT("modify_cpp"), TEXT("trigger_compile"), TEXT("regenerate") } },
+		{ TEXT("material"),    { TEXT("material") } },
+		{ TEXT("mesh"),        { TEXT("mesh"), TEXT("import_mesh"), TEXT("import_assets"), TEXT("configure_static") } },
+		{ TEXT("animation"),   { TEXT("anim") } },
+		{ TEXT("widget"),      { TEXT("widget") } },
+		{ TEXT("pcg"),         { TEXT("pcg") } },
+		{ TEXT("input"),       { TEXT("input") } },
+		{ TEXT("performance"), { TEXT("perf"), TEXT("cvar"), TEXT("scalability"), TEXT("renderer"), TEXT("csv_profiler"), TEXT("profiling"), TEXT("console") } },
+		{ TEXT("level"),       { TEXT("spawn"), TEXT("place_light"), TEXT("modify_world") } },
+		{ TEXT("build"),       { TEXT("build_lighting"), TEXT("package_project") } },
+		{ TEXT("settings"),    { TEXT("config"), TEXT("read_config"), TEXT("write_config") } },
+		{ TEXT("context"),     { TEXT("list_directory"), TEXT("search_assets"), TEXT("read_file"), TEXT("search_files") } },
+		{ TEXT("source_control"), { TEXT("source_control") } },
+		{ TEXT("sequencer"),   { TEXT("sequencer"), TEXT("level_sequence") } },
+		{ TEXT("gas"),         { TEXT("gas_") } },
+		{ TEXT("behavior"),    { TEXT("behavior"), TEXT("blackboard"), TEXT("navmesh") } },
+		{ TEXT("pie"),         { TEXT("pie"), TEXT("simulate_input") } },
+		{ TEXT("data"),        { TEXT("data_table"), TEXT("datatable"), TEXT("import_json") } },
+		{ TEXT("diagnostics"), { TEXT("message_log"), TEXT("read_message") } },
+		{ TEXT("validation"),  { TEXT("validate"), TEXT("automation_test") } },
+		{ TEXT("python"),      { TEXT("python") } },
+		{ TEXT("viewport"),    { TEXT("viewport"), TEXT("capture") } },
+	};
+
+	FString CategoryLower = Category.ToLower();
+	const TArray<FString>* Patterns = CategoryPatterns.Find(CategoryLower);
+
+	if (!Patterns)
+	{
+		// List all available categories
+		FString CatList;
+		for (const auto& Pair : CategoryPatterns)
+		{
+			CatList += TEXT("  - ") + Pair.Key + TEXT("\n");
+		}
+		return FString::Printf(TEXT("Category '%s' not recognized. Available categories:\n%s"), *Category, *CatList);
+	}
+
+	FString Result = FString::Printf(TEXT("=== TOOLS IN CATEGORY: %s ===\n"), *Category);
+
+	int32 Count = 0;
+	for (const auto& Pair : ToolSchemas)
+	{
+		if (DisabledTools.Contains(Pair.Key)) continue;
+
+		bool bMatch = false;
+		for (const FString& Pattern : *Patterns)
+		{
+			if (Pair.Key.Contains(Pattern, ESearchCase::IgnoreCase))
+			{
+				bMatch = true;
+				break;
+			}
+		}
+
+		if (bMatch)
+		{
+			FString Desc;
+			Pair.Value->TryGetStringField(TEXT("description"), Desc);
+			// First two sentences
+			int32 DotCount = 0;
+			int32 CutPos = Desc.Len();
+			for (int32 i = 0; i < Desc.Len(); ++i)
+			{
+				if (Desc[i] == TEXT('.'))
+				{
+					DotCount++;
+					if (DotCount >= 2) { CutPos = i + 1; break; }
+				}
+			}
+			Desc = Desc.Left(CutPos);
+
+			Result += FString::Printf(TEXT("  • %s — %s\n"), *Pair.Key, *Desc);
+			Count++;
+		}
+	}
+
+	if (Count == 0)
+	{
+		Result += TEXT("  (no tools found in this category)\n");
+	}
+	else
+	{
+		Result += FString::Printf(TEXT("\n%d tools found. Use get_tool_info(tool_name) to load the full schema for any tool.\n"), Count);
+	}
+
+	return Result;
+}
+
+FString FAutonomixToolSchemaRegistry::GetModeWhenToUse(EAutonomixAgentMode Mode)
+{
+	switch (Mode)
+	{
+	case EAutonomixAgentMode::General:
+		return TEXT("Use for mixed tasks spanning multiple domains.");
+	case EAutonomixAgentMode::Blueprint:
+		return TEXT("Use when working exclusively with Blueprint visual scripting.");
+	case EAutonomixAgentMode::CppCode:
+		return TEXT("Use when implementing or modifying C++ source code.");
+	case EAutonomixAgentMode::Architect:
+		return TEXT("Use for planning, code review, and design without making changes.");
+	case EAutonomixAgentMode::Debug:
+		return TEXT("Use when diagnosing compile errors, crashes, or unexpected behavior.");
+	case EAutonomixAgentMode::Asset:
+		return TEXT("Use when working with materials, meshes, textures, or other assets.");
+	case EAutonomixAgentMode::Orchestrator:
+		return TEXT("Use for complex multi-step projects requiring coordination across multiple domains.");
+	}
+	return FString();
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "validation_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "validate_assets",
+      "description": "Run Unreal's official Data Validation system (UEditorValidatorSubsystem) on specified assets or the entire project. Checks for missing references, invalid properties, broken dependencies, and project-specific validators. This is a read-only diagnostic tool — use it after creating or modifying assets to verify correctness beyond compile success.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Array of content paths to validate (e.g., ['/Game/Blueprints/BP_Player', '/Game/Materials/M_Rock'])"
+          },
+          "validate_all": {
+            "type": "boolean",
+            "description": "If true, validate ALL project assets under /Game/. Can be slow on large projects. Default: false."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "run_automation_tests",
+      "description": "Run Unreal Automation Tests matching a filter pattern. Tests run asynchronously — use read_message_log with category_filter='LogAutomationTest' to check results after a few seconds. Common filters: 'Project.' for project tests, 'Functional.' for functional tests, 'Engine.' for engine tests.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "test_filter": {
+            "type": "string",
+            "description": "Filter pattern to match test names (e.g., 'Project.', 'Functional.MyTest', '*' for all). Default: 'Project.'"
+          },
+          "list_only": {
+            "type": "boolean",
+            "description": "If true, list matching tests without running them. Default: false (runs tests)."
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

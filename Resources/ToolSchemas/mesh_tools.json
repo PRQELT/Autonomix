@@ -1,0 +1,91 @@
+{
+  "schema_version": "2.0.0",
+  "domain": "mesh_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "import_mesh",
+      "description": "Import a static or skeletal mesh from an FBX file into the project.\n\nSupported formats: FBX (recommended), OBJ (static mesh only).\nFor animation-only FBX imports, use import_animation_fbx instead.\n\nAfter import:\n  - Use set_component_properties to assign the mesh to a StaticMeshComponent or SkeletalMeshComponent\n  - Use configure_static_mesh to set LOD generation, Nanite, and collision\n  - Use search_assets to find the created asset path\n\nNaming conventions:\n  - Static meshes: SM_ prefix (e.g. SM_Rock, SM_Table)\n  - Skeletal meshes: SK_ prefix (e.g. SK_HeroChar, SK_Enemy)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source_file": {
+            "type": "string",
+            "description": "Absolute path to the FBX or OBJ file on disk, e.g. C:/Assets/SM_Rock.fbx"
+          },
+          "destination_path": {
+            "type": "string",
+            "description": "Content folder for the imported mesh asset, e.g. /Game/Meshes/Environment"
+          },
+          "asset_name": {
+            "type": "string",
+            "description": "Name for the created mesh asset, e.g. SM_Rock. If omitted, uses the filename."
+          },
+          "import_as_skeletal": {
+            "type": "boolean",
+            "description": "If true, import as SkeletalMesh (SK_) rather than StaticMesh (SM_). Default: false."
+          }
+        },
+        "required": ["source_file", "destination_path"]
+      }
+    },
+
+    {
+      "name": "import_assets_batch",
+      "description": "Import multiple asset files in a single batch operation.\n\nMore efficient than multiple import_mesh calls for large asset sets.\nAll assets import to the same destination_path folder.\n\nSupported file types in the same batch: FBX, OBJ, PNG, TGA, WAV, MP3.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source_files": {
+            "type": "array",
+            "description": "List of absolute file paths to import",
+            "items": {
+              "type": "string",
+              "description": "Absolute path to a file on disk"
+            }
+          },
+          "destination_path": {
+            "type": "string",
+            "description": "Content folder for all imported assets, e.g. /Game/ImportedAssets"
+          }
+        },
+        "required": ["source_files", "destination_path"]
+      }
+    },
+
+    {
+      "name": "configure_static_mesh",
+      "description": "Configure post-import settings on a Static Mesh asset:\n  - LOD generation (automatic or manually specified count)\n  - Nanite enable/disable (UE5 only)\n  - Collision complexity\n  - Lightmap resolution\n\nCall after import_mesh or when you need to change an existing mesh's settings.\n\nNanite is recommended for high-poly hero assets (>100k triangles).\nDo NOT enable Nanite on meshes used in particle systems, water, or instanced foliage — use LODs instead.\n\nLOD reduction:\n  - auto: engine generates LODs automatically based on triangle reduction\n  - manual: specify lod_count\n  - none: single LOD (for UI meshes, simple primitives)",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Static Mesh asset to configure"
+          },
+          "enable_nanite": {
+            "type": "boolean",
+            "description": "Enable Nanite virtualized geometry (UE5 only). Recommended for high-poly static assets."
+          },
+          "lod_generation": {
+            "type": "string",
+            "description": "LOD generation mode: 'auto' (engine generates), 'manual' (use lod_count), 'none' (single LOD). Default: 'auto'"
+          },
+          "lod_count": {
+            "type": "integer",
+            "description": "Number of LODs to generate when lod_generation='manual'. Typical: 3-4."
+          },
+          "collision_complexity": {
+            "type": "string",
+            "description": "Collision complexity: 'simple' (box/capsule/convex hull), 'complex' (per-poly; expensive), 'simple_and_complex', 'use_complex_as_simple'. Default: 'simple'."
+          },
+          "lightmap_resolution": {
+            "type": "integer",
+            "description": "Lightmap UV resolution in texels (power of 2: 64, 128, 256, 512, 1024). Higher = better quality baked lighting but more memory."
+          }
+        },
+        "required": ["asset_path"]
+      }
+    }
+  ]
+}

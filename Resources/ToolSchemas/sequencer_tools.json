@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "sequencer_tools",
+  "min_plugin_version": "1.1.0",
+  "tools": [
+    {
+      "name": "create_level_sequence",
+      "description": "Create a new Level Sequence asset for cinematics, cutscenes, or gameplay timelines. Optionally spawn a LevelSequenceActor in the current level to play it.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path (e.g., '/Game/Cinematics/LS_IntroCutscene')"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "description": "Playback duration in seconds (default: 5.0)"
+          },
+          "spawn_in_world": {
+            "type": "boolean",
+            "description": "Spawn a LevelSequenceActor in the current level (default: false)"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    },
+    {
+      "name": "add_sequencer_track",
+      "description": "Add a track to an existing Level Sequence. Transform tracks require binding to a level actor by label. Camera Cut and Audio tracks are master tracks (no actor binding needed).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Level Sequence"
+          },
+          "track_type": {
+            "type": "string",
+            "enum": ["Transform", "CameraCut", "Audio"],
+            "description": "Type of track to add"
+          },
+          "actor_label": {
+            "type": "string",
+            "description": "For Transform tracks: the label of the actor in the level to bind (as shown in the Outliner)"
+          }
+        },
+        "required": ["asset_path", "track_type"]
+      }
+    },
+    {
+      "name": "add_sequencer_keyframe",
+      "description": "Add a keyframe to a track at a specific time. For Transform tracks, specify location, rotation, and/or scale values at the given time.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Level Sequence"
+          },
+          "track_type": {
+            "type": "string",
+            "enum": ["Transform"],
+            "description": "Type of track to keyframe"
+          },
+          "actor_label": {
+            "type": "string",
+            "description": "Actor label for the track binding"
+          },
+          "time": {
+            "type": "number",
+            "description": "Time in seconds where the keyframe should be placed"
+          },
+          "location": {
+            "type": "object",
+            "description": "World location at this keyframe",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "rotation": {
+            "type": "object",
+            "description": "Rotation at this keyframe",
+            "properties": {
+              "pitch": { "type": "number" },
+              "yaw": { "type": "number" },
+              "roll": { "type": "number" }
+            }
+          },
+          "scale": {
+            "type": "object",
+            "description": "Scale at this keyframe (default: 1,1,1)",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          }
+        },
+        "required": ["asset_path", "track_type", "time"]
+      }
+    }
+  ]
+}

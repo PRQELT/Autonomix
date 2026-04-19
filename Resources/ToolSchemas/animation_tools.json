@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "animation_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "create_anim_blueprint",
+      "description": "Create an Animation Blueprint (ABP_) asset targeting a skeleton.\n\nAn Animation Blueprint has TWO isolated execution realms:\n  1. EventGraph: Standard K2 Blueprint logic — cache Pawn velocity, booleans, rotation from the\n     owning character. THIS is what inject_blueprint_nodes_t3d populates.\n     CRITICAL: NEVER directly read gameplay state in the AnimGraph — always cache via EventGraph\n     to prevent thread-safety crashes.\n  2. AnimGraph: Blend nodes, state machines, skeletal controls (IK). This MUST be authored in\n     the editor UI — it uses specialized nodes not available in T3D.\n\nWorkflow:\n1. create_anim_blueprint — create the ABP targeting the character's skeleton\n2. inject_blueprint_nodes_t3d (graph_name='EventGraph') — add variable caching logic\n3. assign_anim_blueprint — assign the ABP to the SkeletalMeshComponent of the character BP\n4. (In editor) open the AnimGraph to create state machine and blend nodes\n\nNaming convention: ABP_ prefix (e.g. ABP_HeroCharacter, ABP_Enemy)\n\nUse get_anim_info to find the skeleton path before creating the AnimBP.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Output content path for the Animation Blueprint, e.g. /Game/Animations/ABP_HeroChar"
+          },
+          "skeleton_path": {
+            "type": "string",
+            "description": "Content path of the target USkeleton asset, e.g. /Game/Characters/SK_Hero_Skeleton. Use search_assets to find it if unsure."
+          },
+          "parent_class": {
+            "type": "string",
+            "description": "Parent C++ class for the AnimBP. Default: AnimInstance. Custom parent classes must derive from UAnimInstance."
+          }
+        },
+        "required": ["asset_path", "skeleton_path"]
+      }
+    },
+
+    {
+      "name": "import_animation_fbx",
+      "description": "Import an FBX animation file and create a UAnimSequence asset targeting a specific skeleton.\n\nRequirements:\n  - The FBX file must exist on the local disk (absolute path)\n  - The skeleton asset must already exist in the project\n  - Bone names in the FBX must match the target skeleton hierarchy\n\nAfter import:\n  - Use create_anim_montage to wrap sequences into playable montages\n  - Use assign_anim_blueprint to drive animation via an AnimBP\n  - Use get_anim_info to list all sequences compatible with a skeleton",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source_file": {
+            "type": "string",
+            "description": "Absolute path to the FBX file on disk, e.g. C:/Users/user/Desktop/Run.fbx"
+          },
+          "skeleton_path": {
+            "type": "string",
+            "description": "Content path of the target USkeleton asset, e.g. /Game/Characters/SK_Hero_Skeleton"
+          },
+          "destination_path": {
+            "type": "string",
+            "description": "Content folder for the created AnimSequence. Default: /Game/Animations"
+          },
+          "asset_name": {
+            "type": "string",
+            "description": "Name for the created AnimSequence asset, e.g. AS_Run. If omitted, uses the FBX filename."
+          }
+        },
+        "required": ["source_file", "skeleton_path"]
+      }
+    },
+
+    {
+      "name": "assign_anim_blueprint",
+      "description": "Assign an Animation Blueprint to a SkeletalMeshComponent inside an existing Blueprint.\n\nThis sets the AnimClass on the component template, which drives the character's animations at runtime.\n\nIMPORTANT: Use the _C generated class path (append _C to the ABP asset path):\n  - ABP asset path: /Game/Animations/ABP_HeroChar\n  - Generated class path: /Game/Animations/ABP_HeroChar.ABP_HeroChar_C\n\nUse get_blueprint_info to confirm the component name (typically 'Mesh' for Character parent class).",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of the Blueprint to modify (the character Blueprint)"
+          },
+          "component_name": {
+            "type": "string",
+            "description": "Variable name of the SkeletalMeshComponent in the Blueprint SCS. Typically 'Mesh' for ACharacter subclasses. Use get_blueprint_info to confirm."
+          },
+          "anim_blueprint_path": {
+            "type": "string",
+            "description": "Content path of the Animation Blueprint GENERATED CLASS (_C suffix), e.g. /Game/Animations/ABP_HeroChar.ABP_HeroChar_C"
+          }
+        },
+        "required": ["asset_path", "component_name", "anim_blueprint_path"]
+      }
+    },
+
+    {
+      "name": "create_anim_montage",
+      "description": "Create an AnimMontage asset from one or more AnimSequences on a skeleton.\n\nAnimMontages are used for gameplay-triggered animations (attacks, interactions, death) via PlayMontage in Blueprint.\n\nAfter creation:\n  - Open in the editor to add slots, sections, and notify events if needed\n  - Wire to Blueprint via inject_blueprint_nodes_t3d using PlayMontage (MemberParent UAnimInstance or USkeletalMeshComponent)\n\nNaming convention: AM_ prefix (e.g. AM_Attack_Light, AM_Death)\n\nUse get_anim_info to get the list of available sequences for the target skeleton.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path for the AnimMontage, e.g. /Game/Animations/AM_Attack"
+          },
+          "skeleton_path": {
+            "type": "string",
+            "description": "Content path of the USkeleton asset"
+          },
+          "sequences": {
+            "type": "array",
+            "description": "Content paths of AnimSequence assets to include in the montage (the first sequence is the source)",
+            "items": {
+              "type": "string",
+              "description": "AnimSequence content path"
+            }
+          }
+        },
+        "required": ["asset_path", "skeleton_path", "sequences"]
+      }
+    },
+
+    {
+      "name": "get_anim_info",
+      "description": "Read-only query: return animation asset information for a skeleton or Animation Blueprint.\n\nReturns:\n  - skeleton_name and skeleton_path\n  - compatible_sequences: all AnimSequences in /Game that target this skeleton\n  - compatible_montages: all AnimMontages targeting this skeleton\n\nCall this BEFORE create_anim_blueprint or create_anim_montage to find existing assets and avoid duplicates.\n\nProvide either a Skeleton asset path or an AnimBlueprint asset path as asset_path.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "asset_path": {
+            "type": "string",
+            "description": "Content path of a USkeleton or UAnimBlueprint asset to query"
+          }
+        },
+        "required": ["asset_path"]
+      }
+    }
+  ]
+}

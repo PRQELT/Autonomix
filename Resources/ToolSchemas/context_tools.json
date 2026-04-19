@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0.0",
+  "domain": "context_tools",
+  "min_plugin_version": "1.0.0",
+  "tools": [
+    {
+      "name": "list_directory",
+      "description": "List files and directories in a project-relative path. Use this to explore Source/ and Config/ directories. For finding Blueprints, Materials, Textures and other Unreal assets, prefer 'search_assets' instead — it searches the asset registry directly and is much faster than navigating directories manually.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string",
+            "description": "Project-relative directory path to list. Use empty string '' for project root. Examples: 'Source', 'Content/Blueprints', 'Config', 'Source/MyGame'"
+          }
+        },
+        "required": [
+          "directory"
+        ]
+      }
+    },
+    {
+      "name": "search_assets",
+      "description": "Search the Unreal asset registry by name, class type, or path. Returns matching assets with their class and full content path. Use this FIRST when looking for Blueprints, Materials, Textures, Static Meshes, Skeletal Meshes, Animation assets, etc. This is MUCH faster than browsing directories with list_directory.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search term to match against asset names and paths (e.g. 'ThirdPerson', 'BP_Player', 'M_Rock')"
+          },
+          "class_filter": {
+            "type": "string",
+            "description": "Filter by asset class (e.g. 'Blueprint', 'Material', 'StaticMesh', 'Texture2D', 'SkeletalMesh', 'AnimSequence')"
+          },
+          "path_filter": {
+            "type": "string",
+            "description": "Filter by content path substring (e.g. '/Game/Characters/', '/Game/ThirdPerson/')"
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum results to return (1-200, default 50)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "read_file_snippet",
+      "description": "Read a section of a source file with line numbers. Use this to inspect C++ headers, implementations, config files, or other text files. Supports .h, .cpp, .cs, .ini, .json, .txt, .xml, .yaml, .md, .py, .uplugin, .uproject files.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Project-relative file path (e.g. 'Source/MyGame/MyActor.h')"
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "First line to read (1-based, default 1)"
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "Last line to read (default: start_line + 99, max 500 lines per read)"
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      }
+    }
+  ]
+}
