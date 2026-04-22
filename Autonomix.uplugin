@@ -35,8 +35,12 @@
 		},
 		{
 			"Name": "GameplayAbilities",
+<<<<<<< HEAD
+			"Enabled": true
+=======
 			"Enabled": true,
 			"Optional": true
+>>>>>>> upstream/main
 		}
 	],
 	"Modules": [

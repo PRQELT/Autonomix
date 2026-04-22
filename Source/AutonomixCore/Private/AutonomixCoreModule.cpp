@@ -1,5 +1,9 @@
 // Copyright Autonomix. All Rights Reserved.
+<<<<<<< HEAD
+//fixed a few things here and there, but overall this is the same as the original code. I just added some logging to the startup and shutdown of the module.
+=======
 
+>>>>>>> upstream/main
 #include "AutonomixCoreModule.h"
 
 DEFINE_LOG_CATEGORY(LogAutonomix);

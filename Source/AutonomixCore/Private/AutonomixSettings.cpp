@@ -1,5 +1,9 @@
 // Copyright Autonomix. All Rights Reserved.
+<<<<<<< HEAD
+//repo
+=======
 
+>>>>>>> upstream/main
 #include "AutonomixSettings.h"
 #include "AutonomixCoreModule.h"
 #include "Misc/MessageDialog.h"
