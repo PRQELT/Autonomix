@@ -27,6 +27,9 @@ public:
 	/** Approximate tokens for a JSON value array (serializes then counts) */
 	static int32 EstimateTokens(const TArray<TSharedPtr<FJsonValue>>& JsonArray);
 
+	/** Approximate tokens for a JSON object array (serializes then counts) */
+	static int32 EstimateTokens(const TArray<TSharedPtr<FJsonObject>>& JsonArray);
+
 	/** Get the context window size in tokens for the given setting */
 	static int32 GetContextWindowTokens(bool bExtended = false);
 
