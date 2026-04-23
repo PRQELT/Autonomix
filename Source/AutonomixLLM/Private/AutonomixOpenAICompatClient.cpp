@@ -13,6 +13,7 @@
 // ==========================================================================
 // Call ID sanitization for OpenAI Responses API
 // Ported from Roo Code utils/tool-id.ts sanitizeOpenAiCallId()
+// Force rebuild after token counter removal
 // ==========================================================================
 
 /** Sanitize a tool call ID to match OpenAI's validation pattern: ^[a-zA-Z0-9_-]+$
@@ -193,30 +194,6 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	RetrySystemPrompt = SystemPrompt;
 	RetryToolSchemas = ToolSchemas;
 
-	// ---- Token budget enforcement ----
-	// Estimate total request tokens and truncate history if necessary to fit context window.
-	// Prevents 400 errors from oversized payloads (Issue #3: 400k+ token usage).
-	int32 ContextWindow = FAutonomixTokenCounter::GetContextWindowTokens();
-	int32 SystemTokens = FAutonomixTokenCounter::EstimateTokens(SystemPrompt);
-	int32 ToolTokens = FAutonomixTokenCounter::EstimateTokens(ToolSchemas);
-	int32 OverheadTokens = 1000; // JSON structure, metadata, etc.
-	TArray<FAutonomixMessage> EffectiveHistory = ConversationHistory;
-	int32 HistoryTokens = FAutonomixTokenCounter::EstimateTokens(EffectiveHistory);
-	int32 TotalTokens = SystemTokens + HistoryTokens + ToolTokens + OverheadTokens;
-
-	if (TotalTokens > ContextWindow)
-	{
-		UE_LOG(LogAutonomix, Warning, TEXT("OpenAICompatClient: Estimated total tokens %d exceeds context window %d. Truncating history."), TotalTokens, ContextWindow);
-		// Truncate history from the beginning until it fits
-		while (EffectiveHistory.Num() > 1 && TotalTokens > ContextWindow)
-		{
-			EffectiveHistory.RemoveAt(0);
-			HistoryTokens = FAutonomixTokenCounter::EstimateTokens(EffectiveHistory);
-			TotalTokens = SystemTokens + HistoryTokens + ToolTokens + OverheadTokens;
-		}
-		UE_LOG(LogAutonomix, Log, TEXT("OpenAICompatClient: After truncation, history has %d messages, total tokens %d."), EffectiveHistory.Num(), TotalTokens);
-	}
-
 	// ---- API type selection ----
 	// Responses API (/v1/responses): official OpenAI only (GPT-5.x, GPT-4.1, o-series).
 	// Azure, Ollama, LMStudio, Custom do NOT support the Responses API.
@@ -227,7 +204,7 @@ void FAutonomixOpenAICompatClient::SendMessage(
 	                               Provider == EAutonomixProvider::Custom);
 	bUseResponsesAPI = (Provider == EAutonomixProvider::OpenAI) && !bIsAzureRequest && !bIsLocalProvider;
 
-	TSharedPtr<FJsonObject> Body = BuildRequestBody(EffectiveHistory, SystemPrompt, ToolSchemas);
+	TSharedPtr<FJsonObject> Body = BuildRequestBody(ConversationHistory, SystemPrompt, ToolSchemas);
 	FString BodyString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&BodyString);
 	FJsonSerializer::Serialize(Body.ToSharedRef(), Writer);
