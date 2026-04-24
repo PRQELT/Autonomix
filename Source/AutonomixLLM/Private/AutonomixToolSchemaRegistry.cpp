@@ -744,6 +744,7 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetEssentialSchema
 		TEXT("get_blueprint_info"),
 
 		// Blueprint basics (most common UE task)
+		TEXT("create_blueprint_actor"),
 		TEXT("inject_blueprint_nodes_t3d"),
 		TEXT("connect_blueprint_pins"),
 
@@ -801,6 +802,7 @@ TArray<TSharedPtr<FJsonObject>> FAutonomixToolSchemaRegistry::GetTier1Schemas() 
 		TEXT("get_blueprint_info"),
 
 		// Blueprint basics (most common UE task)
+		TEXT("create_blueprint_actor"),
 		TEXT("inject_blueprint_nodes_t3d"),
 		TEXT("connect_blueprint_pins"),
 

@@ -2137,6 +2137,7 @@ FString SAutonomixMainPanel::BuildSystemPrompt() const
         "If they do, use connect_blueprint_pins to wire them together or set_node_pin_default to fix their values — do NOT create duplicates.\n"
         "4. If duplicate or unwanted nodes exist, use delete_blueprint_nodes to remove them BEFORE injecting replacements.\n"
         "5. Add logic nodes via inject_blueprint_nodes_t3d — include ALL connected nodes in ONE T3D block when possible (use LinkedTo references within the same T3D)\n"
+        "   If inject_blueprint_nodes_t3d reports BLUEPRINT_NOT_FOUND, do NOT retry inject. Call create_blueprint_actor first to create the missing Blueprint.\n"
         "6. After inject_blueprint_nodes_t3d, call get_blueprint_info AGAIN to see the actual internal node names that were created\n"
         "7. Use connect_blueprint_pins to wire nodes that were NOT connected in the T3D (e.g. connecting newly injected nodes to pre-existing event nodes)\n"
         "8. ALWAYS verify connections: call get_blueprint_info after connecting to confirm pins are wired\n\n"

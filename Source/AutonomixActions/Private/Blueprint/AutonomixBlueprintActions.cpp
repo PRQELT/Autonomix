@@ -1342,7 +1342,10 @@ FAutonomixActionResult FAutonomixBlueprintActions::ExecuteInjectNodesT3D(const T
 	UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *AssetPath);
 	if (!Blueprint)
 	{
-		Result.Errors.Add(FString::Printf(TEXT("Blueprint not found: '%s'"), *AssetPath));
+		Result.Errors.Add(FString::Printf(
+			TEXT("BLUEPRINT_NOT_FOUND: Blueprint '%s' does not exist. Do NOT retry inject_blueprint_nodes_t3d. "
+				"First call create_blueprint_actor with the same asset_path to create the missing Blueprint."),
+			*AssetPath));
 		return Result;
 	}
 
