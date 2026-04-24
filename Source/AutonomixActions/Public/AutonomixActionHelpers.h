@@ -5,10 +5,10 @@
 #include "CoreMinimal.h"
 #include "AutonomixTypes.h"
 #include "Dom/JsonObject.h"
+#include "AssetToolsModule.h"
 
 class UObject;
 class UAssetFactory;
-class FAssetToolsModule;
 
 /**
  * Shared utilities for all action handlers.

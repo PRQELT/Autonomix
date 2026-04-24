@@ -578,6 +578,10 @@ struct AUTONOMIXCORE_API FAutonomixActionResult
 	UPROPERTY(BlueprintReadOnly, Category = "Autonomix")
 	TArray<FString> ModifiedAssets;
 
+	/** Paths of assets that were created */
+	UPROPERTY(BlueprintReadOnly, Category = "Autonomix")
+	TArray<FString> CreatedAssets;
+
 	/** Paths of backup files that were created */
 	UPROPERTY(BlueprintReadOnly, Category = "Autonomix")
 	TArray<FString> BackupPaths;

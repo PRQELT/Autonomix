@@ -5,8 +5,8 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "AssetTools/Public/AssetToolsModule.h"
-#include "AssetRegistry/Public/AssetRegistryModule.h"
+#include "AssetToolsModule.h"
+#include "AssetRegistryModule.h"
 
 DEFINE_LOG_CATEGORY(LogAutonomixActions);
 
