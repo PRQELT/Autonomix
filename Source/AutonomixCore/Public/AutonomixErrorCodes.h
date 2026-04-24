@@ -9,324 +9,326 @@
  * Comprehensive error code system for Autonomix.
  * Ensures consistent error reporting, logging, and user feedback.
  * 
- * Error codes are categorized by domain and numbered sequentially within each domain:
- * - 1000-1099:   General/Core errors
- * - 2000-2099:   Asset loading/management errors
- * - 3000-3099:   Validation errors
- * - 4000-4099:   File operation errors
- * - 5000-5099:   Blueprint-specific errors
- * - 6000-6099:   Material-specific errors
- * - 7000-7099:   C++ code generation errors
- * - 8000-8099:   Animation system errors
- * - 9000-9099:   Safety/Security errors
- * - 10000-10099: LLM/API errors
- * - 11000-11099: Context/Memory errors
+ * Error codes use compact uint8 values (0-255) grouped by category.
+ * Values are sequential within each category block for readability.
+ * Categories:
+ * - 0-6:    General/Core errors
+ * - 10-18:  Asset loading/management errors
+ * - 20-26:  Validation errors
+ * - 30-39:  File operation errors
+ * - 40-53:  Blueprint-specific errors
+ * - 60-65:  Material-specific errors
+ * - 70-77:  C++ code generation errors
+ * - 80-84:  Animation system errors
+ * - 90-94:  Safety/Security errors
+ * - 100-107: LLM/API errors
+ * - 110-116: Context/Memory errors
  */
 
 UENUM(BlueprintType)
-enum class EAutonomixErrorCode : int32
+enum class EAutonomixErrorCode : uint8
 {
 	// ========================================================================
-	// GENERAL / CORE ERRORS (1000-1099)
+	// GENERAL / CORE ERRORS (1-6)
 	// ========================================================================
-	
+
 	/** Operation completed successfully */
-	Success = 0,
+	Success = 0 UMETA(DisplayName = "Success"),
 
 	/** Unknown/unclassified error */
-	UnknownError = 1000,
+	UnknownError = 1 UMETA(DisplayName = "Unknown Error"),
 
 	/** Operation was cancelled by user */
-	Cancelled = 1001,
+	Cancelled = 2 UMETA(DisplayName = "Cancelled"),
 
 	/** Operation timed out */
-	Timeout = 1002,
+	Timeout = 3 UMETA(DisplayName = "Timeout"),
 
 	/** Operation not implemented */
-	NotImplemented = 1003,
+	NotImplemented = 4 UMETA(DisplayName = "Not Implemented"),
 
 	/** Invalid parameters provided */
-	InvalidParameters = 1004,
+	InvalidParameters = 5 UMETA(DisplayName = "Invalid Parameters"),
 
 	/** Operation not permitted in current mode */
-	OperationNotPermitted = 1005,
+	OperationNotPermitted = 6 UMETA(DisplayName = "Operation Not Permitted"),
 
 	// ========================================================================
-	// ASSET LOADING & MANAGEMENT ERRORS (2000-2099)
+	// ASSET LOADING ERRORS (10-18)
 	// ========================================================================
 
 	/** Asset not found at specified path */
-	AssetNotFound = 2000,
+	AssetNotFound = 10 UMETA(DisplayName = "Asset Not Found"),
 
 	/** Asset path is invalid or malformed */
-	InvalidAssetPath = 2001,
+	InvalidAssetPath = 11 UMETA(DisplayName = "Invalid Asset Path"),
 
-	/** Asset is of wrong type (e.g., expected Blueprint, got Material) */
-	AssetTypeMismatch = 2002,
+	/** Asset is of wrong type */
+	AssetTypeMismatch = 12 UMETA(DisplayName = "Asset Type Mismatch"),
 
 	/** Failed to load asset */
-	AssetLoadFailed = 2003,
+	AssetLoadFailed = 13 UMETA(DisplayName = "Asset Load Failed"),
 
 	/** Asset is read-only and cannot be modified */
-	AssetReadOnly = 2004,
+	AssetReadOnly = 14 UMETA(DisplayName = "Asset Read-Only"),
 
 	/** Asset is already locked by another operation */
-	AssetLocked = 2005,
+	AssetLocked = 15 UMETA(DisplayName = "Asset Locked"),
 
 	/** Failed to create asset package */
-	PackageCreationFailed = 2006,
+	PackageCreationFailed = 16 UMETA(DisplayName = "Package Creation Failed"),
 
 	/** Failed to save asset */
-	AssetSaveFailed = 2007,
+	AssetSaveFailed = 17 UMETA(DisplayName = "Asset Save Failed"),
 
 	/** Asset is in use (e.g., open in editor) */
-	AssetInUse = 2008,
+	AssetInUse = 18 UMETA(DisplayName = "Asset In Use"),
 
 	// ========================================================================
-	// VALIDATION ERRORS (3000-3099)
+	// VALIDATION ERRORS (20-26)
 	// ========================================================================
 
 	/** Required JSON field missing */
-	MissingJsonField = 3000,
+	MissingJsonField = 20 UMETA(DisplayName = "Missing JSON Field"),
 
 	/** JSON field has wrong type */
-	WrongJsonFieldType = 3001,
+	WrongJsonFieldType = 21 UMETA(DisplayName = "Wrong JSON Field Type"),
 
 	/** Array field is empty when non-empty required */
-	EmptyArrayField = 3002,
+	EmptyArrayField = 22 UMETA(DisplayName = "Empty Array Field"),
 
 	/** String field is empty when non-empty required */
-	EmptyStringField = 3003,
+	EmptyStringField = 23 UMETA(DisplayName = "Empty String Field"),
 
 	/** Numeric field out of valid range */
-	NumericFieldOutOfRange = 3004,
+	NumericFieldOutOfRange = 24 UMETA(DisplayName = "Numeric Field Out Of Range"),
 
 	/** Invalid file path provided */
-	InvalidFilePath = 3005,
+	InvalidFilePath = 25 UMETA(DisplayName = "Invalid File Path"),
 
 	/** Directory does not exist */
-	DirectoryNotFound = 3006,
+	DirectoryNotFound = 26 UMETA(DisplayName = "Directory Not Found"),
 
 	// ========================================================================
-	// FILE OPERATION ERRORS (4000-4099)
+	// FILE OPERATION ERRORS (30-39)
 	// ========================================================================
 
 	/** Failed to read file */
-	FileReadFailed = 4000,
+	FileReadFailed = 30 UMETA(DisplayName = "File Read Failed"),
 
 	/** Failed to write file */
-	FileWriteFailed = 4001,
+	FileWriteFailed = 31 UMETA(DisplayName = "File Write Failed"),
 
 	/** File does not exist */
-	FileNotFound = 4002,
+	FileNotFound = 32 UMETA(DisplayName = "File Not Found"),
 
 	/** File is read-only */
-	FileReadOnly = 4003,
+	FileReadOnly = 33 UMETA(DisplayName = "File Read-Only"),
 
 	/** Failed to create directory */
-	DirectoryCreationFailed = 4004,
+	DirectoryCreationFailed = 34 UMETA(DisplayName = "Directory Creation Failed"),
 
 	/** Failed to delete file/directory */
-	DeletionFailed = 4005,
+	DeletionFailed = 35 UMETA(DisplayName = "Deletion Failed"),
 
 	/** Failed to copy file */
-	FileCopyFailed = 4006,
+	FileCopyFailed = 36 UMETA(DisplayName = "File Copy Failed"),
 
 	/** Failed to back up file */
-	BackupFailed = 4007,
+	BackupFailed = 37 UMETA(DisplayName = "Backup Failed"),
 
 	/** Insufficient disk space */
-	InsufficientDiskSpace = 4008,
+	InsufficientDiskSpace = 38 UMETA(DisplayName = "Insufficient Disk Space"),
 
 	/** File path is too long */
-	FilePathTooLong = 4009,
+	FilePathTooLong = 39 UMETA(DisplayName = "File Path Too Long"),
 
 	// ========================================================================
-	// BLUEPRINT-SPECIFIC ERRORS (5000-5099)
+	// BLUEPRINT-SPECIFIC ERRORS (40-53)
 	// ========================================================================
 
 	/** Blueprint parent class not found */
-	BlueprintParentNotFound = 5000,
+	BlueprintParentNotFound = 40 UMETA(DisplayName = "Blueprint Parent Not Found"),
 
 	/** Failed to create Blueprint */
-	BlueprintCreationFailed = 5001,
+	BlueprintCreationFailed = 41 UMETA(DisplayName = "Blueprint Creation Failed"),
 
 	/** Blueprint compilation failed */
-	BlueprintCompilationFailed = 5002,
+	BlueprintCompilationFailed = 42 UMETA(DisplayName = "Blueprint Compilation Failed"),
 
-	/** Failed to inject Blueprint nodes (T3D format error) */
-	BlueprintNodeInjectionFailed = 5003,
+	/** Failed to inject Blueprint nodes */
+	BlueprintNodeInjectionFailed = 43 UMETA(DisplayName = "Blueprint Node Injection Failed"),
 
-	/** Pin connection failed (type mismatch, pin not found, etc.) */
-	PinConnectionFailed = 5004,
+	/** Pin connection failed */
+	PinConnectionFailed = 44 UMETA(DisplayName = "Pin Connection Failed"),
 
 	/** Node not found in Blueprint */
-	NodeNotFound = 5005,
+	NodeNotFound = 45 UMETA(DisplayName = "Node Not Found"),
 
 	/** Pin not found on node */
-	PinNotFound = 5006,
+	PinNotFound = 46 UMETA(DisplayName = "Pin Not Found"),
 
 	/** Component not found in Blueprint */
-	ComponentNotFound = 5007,
+	ComponentNotFound = 47 UMETA(DisplayName = "Component Not Found"),
 
 	/** Variable not found in Blueprint */
-	VariableNotFound = 5008,
+	VariableNotFound = 48 UMETA(DisplayName = "Variable Not Found"),
 
 	/** Function not found in Blueprint */
-	FunctionNotFound = 5009,
+	FunctionNotFound = 49 UMETA(DisplayName = "Function Not Found"),
 
 	/** Graph not found in Blueprint */
-	GraphNotFound = 5010,
+	GraphNotFound = 50 UMETA(DisplayName = "Graph Not Found"),
 
 	/** T3D format parsing failed */
-	T3DParsingFailed = 5011,
+	T3DParsingFailed = 51 UMETA(DisplayName = "T3D Parsing Failed"),
 
 	/** GUID placeholder resolution failed */
-	GUIDPlaceholderResolutionFailed = 5012,
+	GUIDPlaceholderResolutionFailed = 52 UMETA(DisplayName = "GUID Placeholder Resolution Failed"),
 
 	/** DAG layout algorithm failed */
-	DAGLayoutFailed = 5013,
+	DAGLayoutFailed = 53 UMETA(DisplayName = "DAG Layout Failed"),
 
 	// ========================================================================
-	// MATERIAL-SPECIFIC ERRORS (6000-6099)
+	// MATERIAL-SPECIFIC ERRORS (60-65)
 	// ========================================================================
 
 	/** Failed to create Material */
-	MaterialCreationFailed = 6000,
+	MaterialCreationFailed = 60 UMETA(DisplayName = "Material Creation Failed"),
 
 	/** Material compilation failed */
-	MaterialCompilationFailed = 6001,
+	MaterialCompilationFailed = 61 UMETA(DisplayName = "Material Compilation Failed"),
 
 	/** Texture not found for Material */
-	TextureNotFound = 6002,
+	TextureNotFound = 62 UMETA(DisplayName = "Texture Not Found"),
 
 	/** Material graph node not found */
-	MaterialNodeNotFound = 6003,
+	MaterialNodeNotFound = 63 UMETA(DisplayName = "Material Node Not Found"),
 
 	/** Material parameter not found */
-	MaterialParameterNotFound = 6004,
+	MaterialParameterNotFound = 64 UMETA(DisplayName = "Material Parameter Not Found"),
 
 	/** Failed to set material parameter */
-	MaterialParameterSetFailed = 6005,
+	MaterialParameterSetFailed = 65 UMETA(DisplayName = "Material Parameter Set Failed"),
 
 	// ========================================================================
-	// C++ CODE GENERATION ERRORS (7000-7099)
+	// C++ CODE GENERATION ERRORS (70-77)
 	// ========================================================================
 
 	/** Failed to create C++ class files */
-	CppClassCreationFailed = 7000,
+	CppClassCreationFailed = 70 UMETA(DisplayName = "C++ Class Creation Failed"),
 
 	/** Generated C++ code failed to compile */
-	CppCompilationFailed = 7001,
+	CppCompilationFailed = 71 UMETA(DisplayName = "C++ Compilation Failed"),
 
 	/** Failed to apply C++ code diff */
-	CppDiffApplyFailed = 7002,
+	CppDiffApplyFailed = 72 UMETA(DisplayName = "C++ Diff Apply Failed"),
 
 	/** C++ code contains unsafe patterns */
-	CppCodeUnsafe = 7003,
+	CppCodeUnsafe = 73 UMETA(DisplayName = "C++ Code Unsafe"),
 
 	/** Failed to parse existing C++ file */
-	CppParsingFailed = 7004,
+	CppParsingFailed = 74 UMETA(DisplayName = "C++ Parsing Failed"),
 
 	/** Header file not found */
-	HeaderFileNotFound = 7005,
+	HeaderFileNotFound = 75 UMETA(DisplayName = "Header File Not Found"),
 
 	/** Source file not found */
-	SourceFileNotFound = 7006,
+	SourceFileNotFound = 76 UMETA(DisplayName = "Source File Not Found"),
 
 	/** Build.cs file not found */
-	BuildCsFileNotFound = 7007,
+	BuildCsFileNotFound = 77 UMETA(DisplayName = "Build.cs File Not Found"),
 
 	// ========================================================================
-	// ANIMATION SYSTEM ERRORS (8000-8099)
+	// ANIMATION SYSTEM ERRORS (80-84)
 	// ========================================================================
 
 	/** Failed to create Animation Blueprint */
-	AnimBlueprintCreationFailed = 8000,
+	AnimBlueprintCreationFailed = 80 UMETA(DisplayName = "Anim Blueprint Creation Failed"),
 
 	/** Animation compilation failed */
-	AnimCompilationFailed = 8001,
+	AnimCompilationFailed = 81 UMETA(DisplayName = "Anim Compilation Failed"),
 
 	/** Skeleton not found for Animation Blueprint */
-	SkeletonNotFound = 8002,
+	SkeletonNotFound = 82 UMETA(DisplayName = "Skeleton Not Found"),
 
 	/** Animation sequence not found */
-	AnimSequenceNotFound = 8003,
+	AnimSequenceNotFound = 83 UMETA(DisplayName = "Anim Sequence Not Found"),
 
 	/** Montage not found */
-	MontageNotFound = 8004,
+	MontageNotFound = 84 UMETA(DisplayName = "Montage Not Found"),
 
 	// ========================================================================
-	// SAFETY & SECURITY ERRORS (9000-9099)
+	// SAFETY & SECURITY ERRORS (90-94)
 	// ========================================================================
 
-	/** Operation blocked by safety gate (insufficient permissions) */
-	SafetyGateRejected = 9000,
+	/** Operation blocked by safety gate */
+	SafetyGateRejected = 90 UMETA(DisplayName = "Safety Gate Rejected"),
 
 	/** File is protected and cannot be modified */
-	ProtectedFileModification = 9001,
+	ProtectedFileModification = 91 UMETA(DisplayName = "Protected File Modification"),
 
 	/** Operation exceeds safety limits */
-	SafetyLimitExceeded = 9002,
+	SafetyLimitExceeded = 92 UMETA(DisplayName = "Safety Limit Exceeded"),
 
 	/** Insufficient approval level */
-	InsufficientApprovalLevel = 9003,
+	InsufficientApprovalLevel = 93 UMETA(DisplayName = "Insufficient Approval Level"),
 
 	/** File pattern matches ignore list */
-	FileIgnored = 9004,
+	FileIgnored = 94 UMETA(DisplayName = "File Ignored"),
 
 	// ========================================================================
-	// LLM / API ERRORS (10000-10099)
+	// LLM / API ERRORS (100-107)
 	// ========================================================================
 
 	/** API key is missing or invalid */
-	MissingAPIKey = 10000,
+	MissingAPIKey = 100 UMETA(DisplayName = "Missing API Key"),
 
 	/** API request failed */
-	APIRequestFailed = 10001,
+	APIRequestFailed = 101 UMETA(DisplayName = "API Request Failed"),
 
 	/** API returned error response */
-	APIErrorResponse = 10002,
+	APIErrorResponse = 102 UMETA(DisplayName = "API Error Response"),
 
 	/** API rate limit exceeded */
-	APIRateLimitExceeded = 10003,
+	APIRateLimitExceeded = 103 UMETA(DisplayName = "API Rate Limit Exceeded"),
 
 	/** API response parsing failed */
-	APIResponseParsingFailed = 10004,
+	APIResponseParsingFailed = 104 UMETA(DisplayName = "API Response Parsing Failed"),
 
 	/** API timeout */
-	APITimeout = 10005,
+	APITimeout = 105 UMETA(DisplayName = "API Timeout"),
 
 	/** LLM provider not configured */
-	LLMProviderNotConfigured = 10006,
+	LLMProviderNotConfigured = 106 UMETA(DisplayName = "LLM Provider Not Configured"),
 
 	/** Model not available */
-	ModelNotAvailable = 10007,
+	ModelNotAvailable = 107 UMETA(DisplayName = "Model Not Available"),
 
 	// ========================================================================
-	// CONTEXT / MEMORY ERRORS (11000-11099)
+	// CONTEXT / MEMORY ERRORS (110-116)
 	// ========================================================================
 
 	/** Context window exceeded */
-	ContextWindowExceeded = 11000,
+	ContextWindowExceeded = 110 UMETA(DisplayName = "Context Window Exceeded"),
 
 	/** Token limit exceeded */
-	TokenLimitExceeded = 11001,
+	TokenLimitExceeded = 111 UMETA(DisplayName = "Token Limit Exceeded"),
 
 	/** Failed to condense context */
-	ContextCondensationFailed = 11002,
+	ContextCondensationFailed = 112 UMETA(DisplayName = "Context Condensation Failed"),
 
 	/** Insufficient memory for operation */
-	InsufficientMemory = 11003,
+	InsufficientMemory = 113 UMETA(DisplayName = "Insufficient Memory"),
 
 	/** Checkpoint not found */
-	CheckpointNotFound = 11004,
+	CheckpointNotFound = 114 UMETA(DisplayName = "Checkpoint Not Found"),
 
 	/** Checkpoint restore failed */
-	CheckpointRestoreFailed = 11005,
+	CheckpointRestoreFailed = 115 UMETA(DisplayName = "Checkpoint Restore Failed"),
 
 	/** Checkpoint corruption detected */
-	CheckpointCorrupted = 11006
+	CheckpointCorrupted = 116 UMETA(DisplayName = "Checkpoint Corrupted")
 };
 
 /**
@@ -461,11 +463,8 @@ namespace AutonomixErrorMessages
 		if (ErrorCode == EAutonomixErrorCode::Success)
 			return 0;
 		
-		if (ErrorCode >= 9000 && ErrorCode < 10000)  // Safety errors
+		if (ErrorCode >= EAutonomixErrorCode::SafetyGateRejected && ErrorCode <= EAutonomixErrorCode::FileIgnored)  // Safety errors (90-94)
 			return 3;
-		
-		if (ErrorCode >= 10000)  // API/LLM errors
-			return 2;
 		
 		return 2;  // Most others are errors
 	}
