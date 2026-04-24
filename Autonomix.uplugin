@@ -35,8 +35,7 @@
 		},
 		{
 			"Name": "GameplayAbilities",
-			"Enabled": true,
-			"Optional": true
+			"Enabled": true
 		}
 	],
 	"Modules": [
