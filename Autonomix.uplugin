@@ -63,7 +63,7 @@
 		{
 			"Name": "AutonomixActions",
 			"Type": "Editor",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostEngineInit"
 		}
 	]
 }

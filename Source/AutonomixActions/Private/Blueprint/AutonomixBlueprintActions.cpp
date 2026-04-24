@@ -1336,6 +1336,13 @@ FAutonomixActionResult FAutonomixBlueprintActions::ExecuteInjectNodesT3D(const T
 		return Result;
 	}
 
+	// Validate T3D format
+	if (!T3DText.StartsWith(TEXT("Begin Object")))
+	{
+		Result.Errors.Add(TEXT("T3D injection failed: T3D string must begin with 'Begin Object'"));
+		return Result;
+	}
+
 	FString GraphName = TEXT("EventGraph");
 	Params->TryGetStringField(TEXT("graph_name"), GraphName);
 
@@ -1396,11 +1403,14 @@ FAutonomixActionResult FAutonomixBlueprintActions::ExecuteInjectNodesT3D(const T
 	{
 		// ImportNodesFromText produces a silent failure on malformed T3D
 		Result.Errors.Add(FString::Printf(
-			TEXT("T3D injection produced 0 nodes in graph '%s'. Possible causes: malformed T3D syntax, wrong Class= specifier, missing 'Begin Object'/'End Object' wrapper, or node Class not available. "
+			TEXT("T3D injection failed: ImportNodesFromText returned 0 nodes in graph '%s'. Possible causes: malformed T3D syntax, wrong Class= specifier, missing 'Begin Object'/'End Object' wrapper, or node Class not available. "
 				 "Verify T3D format: each block must start with 'Begin Object Class=/Script/BlueprintGraph.K2Node_XXX Name=\"NodeName\"' and end with 'End Object'."),
 			*GraphName));
 		return Result;
 	}
+
+	// Mark blueprint as modified
+	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 
 	Blueprint->Modify();
 

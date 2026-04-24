@@ -55,6 +55,16 @@ int32 FAutonomixTokenCounter::EstimateTokens(const TArray<TSharedPtr<FJsonValue>
 	return EstimateTokens(Serialized);
 }
 
+int32 FAutonomixTokenCounter::EstimateTokens(const TArray<TSharedPtr<FJsonObject>>& JsonArray)
+{
+	int32 Total = 0;
+	for (const TSharedPtr<FJsonObject>& Obj : JsonArray)
+	{
+		Total += EstimateTokens(Obj);
+	}
+	return Total;
+}
+
 int32 FAutonomixTokenCounter::GetContextWindowTokens(bool bExtended)
 {
 	// Provider-aware context window lookup.

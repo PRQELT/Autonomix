@@ -13,6 +13,7 @@
 // ==========================================================================
 // Call ID sanitization for OpenAI Responses API
 // Ported from Roo Code utils/tool-id.ts sanitizeOpenAiCallId()
+// Force rebuild after token counter removal
 // ==========================================================================
 
 /** Sanitize a tool call ID to match OpenAI's validation pattern: ^[a-zA-Z0-9_-]+$
