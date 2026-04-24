@@ -12,7 +12,7 @@
  * This is intentionally simple — for pre-flight context budget checks,
  * not billing-accurate counting.
  */
-class FAutonomixTokenCounter
+class AUTONOMIXLLM_API FAutonomixTokenCounter
 {
 public:
 	/** Approximate tokens for a plain text string (~4 chars per token) */
