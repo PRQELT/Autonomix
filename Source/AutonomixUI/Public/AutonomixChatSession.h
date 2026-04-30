@@ -26,7 +26,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnToolRequiresApproval, const FAutonomixAct
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAgentFinished, const FString& /*Reason*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnTokenUsageUpdated, const FAutonomixTokenUsage& /*Usage*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnMessageAdded, const FAutonomixMessage& /*Message*/);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnMessageUpdated, const FGuid& /*MessageId*/, const FString& /*DeltaText*/);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnMessageUpdated, const FGuid& /*MessageId*/, const FString& /*DeltaText*/, EAutonomixMessageRole /*Role*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnStatusUpdated, const FString& /*StatusText*/); // For progress overlay
 DECLARE_MULTICAST_DELEGATE(FOnSessionCompletedContextManagement); // Trigger to resume after context condense
 

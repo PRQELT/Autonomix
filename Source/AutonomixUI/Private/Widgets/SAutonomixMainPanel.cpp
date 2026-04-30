@@ -2983,7 +2983,7 @@ void SAutonomixMainPanel::OnMessageAdded(const FAutonomixMessage& Message)
     SaveTabsToDisk();
 }
 
-void SAutonomixMainPanel::OnMessageUpdated(const FGuid& MessageId, const FString& NewContent)
+void SAutonomixMainPanel::OnMessageUpdated(const FGuid& MessageId, const FString& NewContent, EAutonomixMessageRole Role)
 {
     if (NewContent.TrimStartAndEnd().IsEmpty())
     {
@@ -2992,7 +2992,7 @@ void SAutonomixMainPanel::OnMessageUpdated(const FGuid& MessageId, const FString
 
     if (ChatView.IsValid())
     {
-        ChatView->UpdateStreamingMessage(MessageId, NewContent);
+        ChatView->UpdateStreamingMessage(MessageId, NewContent, Role);
     }
 }
 

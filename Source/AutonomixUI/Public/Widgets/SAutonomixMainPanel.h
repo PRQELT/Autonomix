@@ -284,7 +284,7 @@ private:
 
     // ---- Delegates from ChatSession ----
     void OnMessageAdded(const FAutonomixMessage& Message);
-    void OnMessageUpdated(const FGuid& MessageId, const FString& DeltaText);
+    void OnMessageUpdated(const FGuid& MessageId, const FString& DeltaText, EAutonomixMessageRole Role);
     void OnStatusUpdated(const FString& StatusText);
     void OnAgentFinished(const FString& Reason);
     void OnToolRequiresApproval(const FAutonomixActionPlan& Plan);

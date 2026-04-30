@@ -189,7 +189,7 @@ void FAutonomixChatSession::ProcessToolCallQueue()
 			{
 				ResultToAppend = FString::Printf(TEXT("✅ %s"), *ResultContent);
 			}
-			OnMessageUpdated.Broadcast(ToolMsg.MessageId, ResultToAppend);
+			OnMessageUpdated.Broadcast(ToolMsg.MessageId, ResultToAppend, EAutonomixMessageRole::Assistant);
 		}
 	}
 
@@ -753,7 +753,7 @@ FString FAutonomixChatSession::ExecuteToolCall(const FAutonomixToolCall& ToolCal
 
 void FAutonomixChatSession::OnStreamingText(const FGuid& MessageId, const FString& DeltaText)
 {
-	OnMessageUpdated.Broadcast(MessageId, DeltaText);
+	OnMessageUpdated.Broadcast(MessageId, DeltaText, EAutonomixMessageRole::Assistant);
 }
 
 void FAutonomixChatSession::OnToolCallReceived(const FAutonomixToolCall& ToolCall)
