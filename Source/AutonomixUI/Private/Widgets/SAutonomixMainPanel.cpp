@@ -2255,7 +2255,7 @@ FString SAutonomixMainPanel::BuildSystemPrompt() const
     if (FFileHelper::LoadFileToString(CustomPrompt, *TemplatePath) && !CustomPrompt.IsEmpty())
     {
         // Replace {PROJECT_CONTEXT} placeholder — use empty string here since project context is in the dynamic section
-        CustomPrompt = CustomPrompt.Replace(TEXT("{PROJECT_CONTEXT}"), *ProjectContext);
+        CustomPrompt = CustomPrompt.Replace(TEXT("{PROJECT_CONTEXT}"), TEXT(""));
         SystemPrompt += TEXT("\n\n====\n\nCUSTOM INSTRUCTIONS\n\n") + CustomPrompt;
     }
 
